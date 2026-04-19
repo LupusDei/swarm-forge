@@ -8,7 +8,7 @@ Feature: SwarmForge CLI Integration
 
   Scenario: Start sequence performs complete startup with all components
     Given a recording commander and a fake filesystem
-    And the fake filesystem contains a constitution file at "Contitution.md"
+    And the fake filesystem contains a constitution file at "Constitution.md"
     When start.Run is called with the full configuration
     Then preflight checks are performed for "tmux", "claude", and "watch"
     And directory setup creates "features", "logs", and "agent_context"

@@ -58,8 +58,32 @@ The swarm refuses to ship anything that doesn’t meet the standards.
 
 ## Getting Started
 
+### Prerequisites
+
+- Go 1.25+
+- tmux
+- watch
+- [claude](https://github.com/anthropics/claude-code) CLI, signed in
+
+### Build
+
 ```bash
 git clone https://github.com/LupusDei/swarm-forge.git
-cd swarmforge
-chmod +x swarmforge.sh
-./swarmforge.sh
+cd swarm-forge
+go build -o swarmforge ./cmd/swarmforge
+```
+
+### Start the swarm
+
+```bash
+./swarmforge start
+```
+
+This launches a tmux session named `swarmforge` with four panes — Architect, E2E-Interpreter, Coder, and a metrics tail on `logs/agent_messages.log`. Attach with `tmux attach -t swarmforge` if you detach.
+
+### Other subcommands
+
+```bash
+./swarmforge notify <pane> "message"   # send a message to pane 0–3
+./swarmforge log <role> "message"      # append a line to the agent log
+```

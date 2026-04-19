@@ -44,7 +44,7 @@ func startHandler(cmd tmux.Commander, root string) cli.Handler {
 			ProjectRoot:      root,
 			FS:               setup.OSFS{},
 			LookPath:         exec.LookPath,
-			ConstitutionPath: "Contitution.md",
+			ConstitutionPath: "Constitution.md",
 			Stdout:           os.Stdout,
 		}
 		return start.Run(cfg)

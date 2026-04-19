@@ -8,7 +8,7 @@ set -euo pipefail
 
 SESSION="swarmforge"
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
-CONSTITUTION="$PROJECT_ROOT/Contitution.md"
+CONSTITUTION="$PROJECT_ROOT/Constitution.md"
 
 # ── Colors ───────────────────────────────────────────────────────────
 RED='\033[0;31m'

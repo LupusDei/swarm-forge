@@ -21,7 +21,7 @@ func TestIntegration_StartRunPerformsCompleteStartup(t *testing.T) {
 
 	// Given a fake filesystem contains a constitution file
 	constitutionContent := "Rule 1: TDD is mandatory\nRule 2: Gherkin is truth"
-	fs.Files["/project/Contitution.md"] = []byte(constitutionContent)
+	fs.Files["/project/Constitution.md"] = []byte(constitutionContent)
 
 	// Given all dependencies are available
 	lookPath := func(name string) (string, error) {
@@ -35,7 +35,7 @@ func TestIntegration_StartRunPerformsCompleteStartup(t *testing.T) {
 		ProjectRoot:      "/project",
 		FS:               fs,
 		LookPath:         lookPath,
-		ConstitutionPath: "Contitution.md",
+		ConstitutionPath: "Constitution.md",
 		Stdout:           &stdout,
 	}
 	err := start.Run(cfg)
@@ -152,7 +152,7 @@ func TestIntegration_StartKillsExistingBeforeNew(t *testing.T) {
 	cmd.Sessions["swarmforge"] = true
 
 	fs := NewFakeFS()
-	fs.Files["/project/Contitution.md"] = []byte("constitution")
+	fs.Files["/project/Constitution.md"] = []byte("constitution")
 
 	lookPath := func(name string) (string, error) {
 		return "/usr/bin/" + name, nil
@@ -166,7 +166,7 @@ func TestIntegration_StartKillsExistingBeforeNew(t *testing.T) {
 		ProjectRoot:      "/project",
 		FS:               fs,
 		LookPath:         lookPath,
-		ConstitutionPath: "Contitution.md",
+		ConstitutionPath: "Constitution.md",
 		Stdout:           &stdout,
 	}
 	err := start.Run(cfg)
@@ -193,7 +193,7 @@ func TestIntegration_StartKillsExistingBeforeNew(t *testing.T) {
 func TestIntegration_StartFailsFastOnMissingDep(t *testing.T) {
 	cmd := NewRecordingCommander()
 	fs := NewFakeFS()
-	fs.Files["/project/Contitution.md"] = []byte("constitution")
+	fs.Files["/project/Constitution.md"] = []byte("constitution")
 	var stdout bytes.Buffer
 
 	// Given a lookpath function that rejects "claude"
@@ -211,7 +211,7 @@ func TestIntegration_StartFailsFastOnMissingDep(t *testing.T) {
 		ProjectRoot:      "/project",
 		FS:               fs,
 		LookPath:         lookPath,
-		ConstitutionPath: "Contitution.md",
+		ConstitutionPath: "Constitution.md",
 		Stdout:           &stdout,
 	}
 	err := start.Run(cfg)
@@ -248,7 +248,7 @@ func TestIntegration_StartFailsOnMissingConstitution(t *testing.T) {
 		ProjectRoot:      "/project",
 		FS:               fs,
 		LookPath:         lookPath,
-		ConstitutionPath: "Contitution.md",
+		ConstitutionPath: "Constitution.md",
 		Stdout:           &stdout,
 	}
 	err := start.Run(cfg)
@@ -258,7 +258,7 @@ func TestIntegration_StartFailsOnMissingConstitution(t *testing.T) {
 		t.Fatal("expected error for missing constitution, got nil")
 	}
 	errLower := strings.ToLower(err.Error())
-	if !strings.Contains(errLower, "constitution") && !strings.Contains(errLower, "contitution") {
+	if !strings.Contains(errLower, "constitution") {
 		t.Fatalf("error should mention constitution, got: %s", err.Error())
 	}
 

@@ -71,7 +71,7 @@ func fullCfg(cmd *recCmd, fs *fakeFS, stdout *bytes.Buffer) start.Config {
 		ProjectRoot:      "/project",
 		FS:               fs,
 		LookPath:         passingLookPath,
-		ConstitutionPath: "Contitution.md",
+		ConstitutionPath: "Constitution.md",
 		Stdout:           stdout,
 	}
 }
@@ -90,7 +90,7 @@ func hasCall(calls [][]string, keyword string) bool {
 func TestRunFullSequence(t *testing.T) {
 	cmd := newRecCmd()
 	fs := newFakeFS()
-	fs.files["/project/Contitution.md"] = []byte("Rule 1: TDD")
+	fs.files["/project/Constitution.md"] = []byte("Rule 1: TDD")
 	var stdout bytes.Buffer
 
 	err := start.Run(fullCfg(cmd, fs, &stdout))
@@ -109,7 +109,7 @@ func TestRunKillsExistingSession(t *testing.T) {
 	cmd := newRecCmd()
 	cmd.sessions["swarmforge"] = true
 	fs := newFakeFS()
-	fs.files["/project/Contitution.md"] = []byte("constitution")
+	fs.files["/project/Constitution.md"] = []byte("constitution")
 	var stdout bytes.Buffer
 
 	err := start.Run(fullCfg(cmd, fs, &stdout))
@@ -124,7 +124,7 @@ func TestRunKillsExistingSession(t *testing.T) {
 func TestRunNoExistingSession(t *testing.T) {
 	cmd := newRecCmd()
 	fs := newFakeFS()
-	fs.files["/project/Contitution.md"] = []byte("constitution")
+	fs.files["/project/Constitution.md"] = []byte("constitution")
 	var stdout bytes.Buffer
 
 	err := start.Run(fullCfg(cmd, fs, &stdout))
@@ -139,7 +139,7 @@ func TestRunNoExistingSession(t *testing.T) {
 func TestRunFailsOnMissingDep(t *testing.T) {
 	cmd := newRecCmd()
 	fs := newFakeFS()
-	fs.files["/project/Contitution.md"] = []byte("constitution")
+	fs.files["/project/Constitution.md"] = []byte("constitution")
 	var stdout bytes.Buffer
 
 	cfg := fullCfg(cmd, fs, &stdout)
@@ -172,7 +172,7 @@ func TestRunFailsOnMissingConstitution(t *testing.T) {
 func TestRunWritesPromptFiles(t *testing.T) {
 	cmd := newRecCmd()
 	fs := newFakeFS()
-	fs.files["/project/Contitution.md"] = []byte("Rule 1: TDD")
+	fs.files["/project/Constitution.md"] = []byte("Rule 1: TDD")
 	var stdout bytes.Buffer
 
 	err := start.Run(fullCfg(cmd, fs, &stdout))
@@ -194,7 +194,7 @@ func TestRunWritesPromptFiles(t *testing.T) {
 func TestRunLaunchesAgents(t *testing.T) {
 	cmd := newRecCmd()
 	fs := newFakeFS()
-	fs.files["/project/Contitution.md"] = []byte("constitution")
+	fs.files["/project/Constitution.md"] = []byte("constitution")
 	var stdout bytes.Buffer
 
 	err := start.Run(fullCfg(cmd, fs, &stdout))
@@ -215,7 +215,7 @@ func TestRunLaunchesAgents(t *testing.T) {
 func TestRunInitsMetricsPane(t *testing.T) {
 	cmd := newRecCmd()
 	fs := newFakeFS()
-	fs.files["/project/Contitution.md"] = []byte("constitution")
+	fs.files["/project/Constitution.md"] = []byte("constitution")
 	var stdout bytes.Buffer
 
 	err := start.Run(fullCfg(cmd, fs, &stdout))

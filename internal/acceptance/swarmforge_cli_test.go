@@ -222,7 +222,7 @@ func TestCLI_StartKillsExistingSession(t *testing.T) {
 	cmd := NewRecordingCommander()
 	cmd.Sessions["swarmforge"] = true
 	fs := NewFakeFS()
-	fs.Files["/project/Contitution.md"] = []byte("constitution")
+	fs.Files["/project/Constitution.md"] = []byte("constitution")
 	var stdout bytes.Buffer
 
 	// When the start sequence runs
@@ -232,7 +232,7 @@ func TestCLI_StartKillsExistingSession(t *testing.T) {
 		ProjectRoot:      "/project",
 		FS:               fs,
 		LookPath:         func(name string) (string, error) { return "/usr/bin/" + name, nil },
-		ConstitutionPath: "Contitution.md",
+		ConstitutionPath: "Constitution.md",
 		Stdout:           &stdout,
 	}
 	err := start.Run(cfg)
