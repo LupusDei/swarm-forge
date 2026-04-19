@@ -36,12 +36,12 @@ SwarmForge turns raw AI coding speed into **reliable, scalable, maintainable eng
 | Feature | Description | MVP Status |
 |---------|-------------|------------|
 | **Constitution Engine** | Central `Constitution.md` file that every agent reads at startup. Defines 5 non-negotiable rules. | Yes |
-| **Agent Swarm Orchestration** | Spawns and coordinates multiple specialized agents (Architect, Coder, TDD Guardian, E2E Interpreter, Mutation Hunter, Complexity Enforcer, Linter Guardian) in named tmux panes. | Yes |
+| **Agent Swarm Orchestration** | Spawns and coordinates multiple specialized agents (Architect, Coder, TDD Guardian, E2E Interpreter, Simplicity Enforcer, Mutation Hunter, Linter Guardian) in named tmux panes. | Yes |
 | **Real-Time Collaboration** | Agents communicate via shared filesystem, tmux pane output, and structured log files. Human can observe and intervene in any pane. | Yes |
 | **TDD Enforcement (Rule 1)** | Agents must follow Red → Green → Refactor cycle. Production code forbidden until failing test exists. | Yes |
 | **E2E Gherkin Interpreter (Rule 2)** | Auto-parses `.feature` files into executable end-to-end tests. Gherkin is the single source of truth. | Yes |
-| **Mutation Testing (Rule 3)** | Mutation Hunter generates and kills mutants on every change. ≥90% kill rate required. | Yes |
-| **Cyclomatic Complexity + CRAP Enforcement (Rule 4)** | Complexity Enforcer rejects any method >4 complexity or CRAP ≥30 and forces refactor. | Yes |
+| **Cyclomatic Complexity + CRAP Enforcement (Rule 3)** | Simplicity Enforcer rejects any method >4 complexity or CRAP ≥30 and forces refactor. | Yes |
+| **Mutation Testing (Rule 4)** | Mutation Hunter generates and kills mutants on every change. ≥90% kill rate required. | Yes |
 | **Linter Guardian (Rule 5)** | Runs language-specific linter with zero-tolerance policy. Auto-fixes safe issues. | Yes |
 | **Pre-Commit / Pre-Merge Hooks** | Automatic validation pipeline that blocks any commit violating the Constitution. | Yes |
 | **Live Metrics Dashboard** | Real-time display (in tmux) of test coverage, mutation score, complexity metrics, and Gherkin status. | Yes |
@@ -60,8 +60,9 @@ SwarmForge turns raw AI coding speed into **reliable, scalable, maintainable eng
    - Architect agent reads Constitution and translates task into Gherkin scenarios.  
    - E2E Interpreter generates executable tests from Gherkin.  
    - TDD Guardian drives Red → Green → Refactor cycle.  
+   - Simplicity Enforcer validates complexity and CRAP scores on every file change.  
    - Mutation Hunter runs mutation tests and forces new tests for surviving mutants.  
-   - Complexity Enforcer + Linter Guardian validate every file change.
+   - Linter Guardian validates every file change.
 
 4. **Continuous Validation**  
    Every agent action triggers the full validation pipeline. Any violation halts progress and explains the exact rule broken.

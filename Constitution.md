@@ -26,7 +26,17 @@ All agents (Architect, Coder, Tester, Reviewer, etc.) MUST obey these rules on e
 - Production code changes that affect behavior are forbidden unless the corresponding Gherkin scenarios are updated and passing.
 - Gherkin files serve as the single source of truth for expected system behavior.
 
-## Rule 3: Mutation Testing
+## Rule 3: Cyclomatic Complexity and CRAP Score Enforcement
+- Every method/function must have cyclomatic complexity ≤ 4.
+- CRAP (Change Risk Anti-Patterns) score for every method must be < 30.
+- The Simplicity Enforcer agent runs static analysis on every change.
+- If any method exceeds the limits:
+  - The change is rejected.
+  - The swarm must refactor (extract methods, simplify logic, apply patterns such as Strategy, State, or Command) until the metrics pass.
+- Refactoring must preserve behavior (verified by existing tests + mutation testing).
+- Goal: Keep the codebase simple, readable, and easy to maintain as the swarm scales.
+
+## Rule 4: Mutation Testing
 - Mutation testing is mandatory on every non-trivial change.
 - The Mutation Hunter agent must:
   - Identify conditionals, operators, boundaries, and logical expressions in the changed code.
@@ -37,16 +47,6 @@ All agents (Architect, Coder, Tester, Reviewer, etc.) MUST obey these rules on e
     - Ensure the new test follows Rule 1 (TDD) and Rule 2 (Gherkin where applicable).
 - Target: Achieve ≥ 90% mutation kill rate on changed code before merging.
 - Surviving mutants are treated as critical defects.
-
-## Rule 4: Cyclomatic Complexity and CRAP Score Enforcement
-- Every method/function must have cyclomatic complexity ≤ 4.
-- CRAP (Change Risk Anti-Patterns) score for every method must be < 30.
-- The Complexity Enforcer agent runs static analysis on every change.
-- If any method exceeds the limits:
-  - The change is rejected.
-  - The swarm must refactor (extract methods, simplify logic, apply patterns such as Strategy, State, or Command) until the metrics pass.
-- Refactoring must preserve behavior (verified by existing tests + mutation testing).
-- Goal: Keep the codebase simple, readable, and easy to maintain as the swarm scales.
 
 ## Rule 5: Linter Enforcement (Static Code Quality)
 - All code must pass the configured language-specific linter with zero warnings or errors.

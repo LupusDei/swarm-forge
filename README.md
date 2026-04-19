@@ -16,13 +16,13 @@ SwarmForge turns raw AI coding power into **disciplined, trustworthy engineering
 
 SwarmForge is a lightweight, tmux-based orchestration layer that:
 
-- Spawns and coordinates a **swarm of specialized AI agents** (Architect, Coder, TDD Guardian, E2E Interpreter, Mutation Hunter, Complexity Enforcer, Linter Guardian, etc.)
+- Spawns and coordinates a **swarm of specialized AI agents** (Architect, Coder, TDD Guardian, E2E Interpreter, Simplicity Enforcer, Mutation Hunter, Linter Guardian, etc.)
 - Manages real-time collaboration between agents through named tmux panes and shared file system
 - Enforces the **SwarmForge Constitution** on every change:
   1. **TDD** – Tests first, always (Red → Green → Refactor)
   2. **E2E Gherkin Tests** – Features described in business language and automatically interpreted into executable end-to-end tests
-  3. **Mutation Testing** – Agents deliberately break the code to ensure tests are meaningful
-  4. **Cyclomatic Complexity + CRAP Score** – Keeps every method simple and low-risk
+  3. **Cyclomatic Complexity + CRAP Score** – Keeps every method simple and low-risk
+  4. **Mutation Testing** – Agents deliberately break the code to ensure tests are meaningful
   5. **Linter Enforcement** – Zero warnings, consistent style and quality
 - Provides live visibility into the swarm’s progress through tmux panes and a growing metrics dashboard
 - Builds production-grade, maintainable code while staying true to clean code principles
