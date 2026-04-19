@@ -37,7 +37,7 @@ SwarmForge is a lightweight, tmux-based orchestration layer that:
 
 ## How It Works (High Level)
 
-1. Launch `./swarmforge.sh` — starts the tmux session with the swarm.
+1. Launch `./swarmforge start` — starts the tmux session with the swarm.
 2. Give the swarm a task (via main Architect pane or feature Gherkin file).
 3. Agents collaborate under the Constitution:
    - Requirements → Gherkin scenarios

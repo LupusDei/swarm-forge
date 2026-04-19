@@ -3,6 +3,7 @@ package start
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/swarm-forge/swarm-forge/internal/banner"
 	"github.com/swarm-forge/swarm-forge/internal/preflight"
@@ -22,28 +23,40 @@ type Config struct {
 	LookPath         preflight.LookPathFunc
 	ConstitutionPath string
 	Stdout           io.Writer
+	// Sleeper, when non-nil, is passed to tmux.SendKeys via tmux.WithSleeper
+	// so the metrics-pane init can avoid real wall-clock sleeps in tests.
+	// Production leaves this nil; the real time.Sleep is used.
+	Sleeper tmux.Sleeper
+	// Pause, when non-zero, overrides the default 200ms inter-call pause
+	// in tmux.SendKeys. Zero means "use the tmux default".
+	Pause time.Duration
 }
 
-// Run performs the full startup sequence.
+// Run performs the full startup sequence as an ordered pipeline of steps.
+// Any step returning an error short-circuits the pipeline — in particular,
+// Attach is never called on an error path.
 func Run(cfg Config) error {
-	if err := runPreflight(cfg); err != nil {
-		return err
+	var constitution string
+	steps := []func() error{
+		func() error { return runPreflight(cfg) },
+		func() error { return runSetup(cfg) },
+		func() error {
+			c, err := readConstitution(cfg)
+			constitution = c
+			return err
+		},
+		func() error { banner.Print(cfg.Stdout); return nil },
+		func() error { return createSession(cfg) },
+		func() error { return writeAndLaunchAgents(cfg, constitution) },
+		func() error { return initMetricsPane(cfg) },
+		func() error { return cfg.Commander.Attach(cfg.Session) },
 	}
-	if err := runSetup(cfg); err != nil {
-		return err
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return err
+		}
 	}
-	constitution, err := readConstitution(cfg)
-	if err != nil {
-		return err
-	}
-	banner.Print(cfg.Stdout)
-	if err := createSession(cfg); err != nil {
-		return err
-	}
-	if err := writeAndLaunchAgents(cfg, constitution); err != nil {
-		return err
-	}
-	return initMetricsPane(cfg)
+	return nil
 }
 
 func runPreflight(cfg Config) error {
@@ -51,10 +64,7 @@ func runPreflight(cfg Config) error {
 }
 
 func runSetup(cfg Config) error {
-	if err := setup.EnsureDirs(cfg.FS, cfg.ProjectRoot); err != nil {
-		return err
-	}
-	return setup.WriteHelperScripts(cfg.FS, cfg.ProjectRoot)
+	return setup.EnsureDirs(cfg.FS, cfg.ProjectRoot)
 }
 
 func readConstitution(cfg Config) (string, error) {
@@ -116,5 +126,16 @@ func writeAndLaunchAgents(cfg Config, constitution string) error {
 
 func initMetricsPane(cfg Config) error {
 	metricsCmd := "cd '" + cfg.ProjectRoot + "' && touch logs/agent_messages.log && tail -f logs/agent_messages.log"
-	return tmux.SendKeys(cfg.Commander, cfg.Session, window, 3, metricsCmd)
+	return tmux.SendKeys(cfg.Commander, cfg.Session, window, 3, metricsCmd, sendKeysOpts(cfg)...)
+}
+
+func sendKeysOpts(cfg Config) []tmux.SendKeysOption {
+	var opts []tmux.SendKeysOption
+	if cfg.Sleeper != nil {
+		opts = append(opts, tmux.WithSleeper(cfg.Sleeper))
+	}
+	if cfg.Pause != 0 {
+		opts = append(opts, tmux.WithPause(cfg.Pause))
+	}
+	return opts
 }

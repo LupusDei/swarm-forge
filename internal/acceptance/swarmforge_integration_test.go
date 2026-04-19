@@ -61,14 +61,6 @@ func TestIntegration_StartRunPerformsCompleteStartup(t *testing.T) {
 		}
 	}
 
-	// And helper scripts "notify-agent.sh" and "swarm-log.sh" are written
-	for _, script := range []string{"notify-agent.sh", "swarm-log.sh"} {
-		path := "/project/" + script
-		if _, ok := fs.Files[path]; !ok {
-			t.Errorf("helper script %q not written", path)
-		}
-	}
-
 	// And the startup banner is printed to stdout
 	bannerOutput := stdout.String()
 	if !strings.Contains(bannerOutput, "SwarmForge") {
@@ -110,7 +102,7 @@ func TestIntegration_StartRunPerformsCompleteStartup(t *testing.T) {
 		}
 
 		// And each prompt file contains coordination instructions
-		if !strings.Contains(content, "notify-agent.sh") {
+		if !strings.Contains(content, "./swarmforge notify") {
 			t.Errorf("prompt for %s missing coordination instructions", name)
 		}
 	}
@@ -132,15 +124,35 @@ func TestIntegration_StartRunPerformsCompleteStartup(t *testing.T) {
 
 	// And pane 3 receives "tail -f logs/agent_messages.log"
 	foundTail := false
-	for _, call := range cmd.Calls {
+	tailIdx := -1
+	for i, call := range cmd.Calls {
 		joined := strings.Join(call, " ")
 		if strings.Contains(joined, "tail -f logs/agent_messages.log") {
 			foundTail = true
+			tailIdx = i
 			break
 		}
 	}
 	if !foundTail {
 		t.Error("pane 3 did not receive tail command")
+	}
+
+	// And after all panes are initialized the commander attaches to session "swarmforge"
+	attachIdx := -1
+	for i, call := range cmd.Calls {
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "attach-session") && strings.Contains(joined, "swarmforge") {
+			attachIdx = i
+		}
+	}
+	if attachIdx < 0 {
+		t.Error("start.Run must attach to 'swarmforge' session as final step")
+	}
+	if tailIdx >= 0 && attachIdx <= tailIdx {
+		t.Errorf("attach-session must come after metrics pane init; attachIdx=%d tailIdx=%d", attachIdx, tailIdx)
+	}
+	if attachIdx >= 0 && attachIdx != len(cmd.Calls)-1 {
+		t.Errorf("attach-session must be the final call; attachIdx=%d total=%d", attachIdx, len(cmd.Calls))
 	}
 }
 

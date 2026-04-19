@@ -59,16 +59,3 @@ func TestEnsureDirsCreatesAll(t *testing.T) {
 		}
 	}
 }
-
-func TestWriteHelperScriptsCreatesFiles(t *testing.T) {
-	fs := newFakeFS()
-	err := setup.WriteHelperScripts(fs, "/root")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	for _, name := range []string{"notify-agent.sh", "swarm-log.sh"} {
-		if _, ok := fs.files["/root/"+name]; !ok {
-			t.Fatalf("missing file %q", name)
-		}
-	}
-}

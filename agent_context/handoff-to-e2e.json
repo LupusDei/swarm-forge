@@ -2,21 +2,110 @@
   "from": "architect",
   "to": "e2e-interpreter",
   "status": "pending",
-  "feature": "features/swarmforge-integration.feature",
-  "summary": "Integration tests for SwarmForge CLI - 8 scenarios that force wiring all components together. The key gap: start.Run() only does tmux session creation but does NOT call preflight, setup, banner, prompt generation, agent launching, or metrics pane initialization. There is no real Commander implementation and no cmd/swarmforge/main.go.",
-  "artifacts": [
-    "features/swarmforge-integration.feature",
-    "internal/start/start.go",
-    "internal/tmux/tmux.go",
-    "internal/cli/cli.go",
-    "internal/setup/setup.go",
-    "internal/prompt/prompt.go",
-    "internal/prompt/roles.go",
-    "internal/preflight/preflight.go",
-    "internal/banner/banner.go",
-    "internal/swarmlog/swarmlog.go",
-    "internal/notify/notify.go"
+  "id": "C5-two-step-send",
+  "summary": "C4 (single send-keys with Enter appended) was insufficient: tmux delivered the text and Enter back-to-back to Claude Code panes, and Claude's input box had not committed the text before Enter arrived, so the message sat in the input and never submitted. The fix, scoped to the Go path only, is to split delivery into TWO send-keys invocations with a configurable pause between them. Your job is to write failing E2E/unit tests that force this behavior, preserving the spirit of the existing Enter-invariant tests.",
+  "scope": {
+    "in_scope": [
+      "internal/tmux/tmux.go (tmux.SendKeys)",
+      "internal/tmux/tmux_test.go",
+      "internal/tmux/exec.go if the Commander interface needs a sleeper injection",
+      "internal/notify/notify.go and internal/notify/notify_test.go (downstream behavior)",
+      "internal/start/start.go and internal/start/start_test.go (metrics pane still uses SendKeys)",
+      "internal/acceptance/swarmforge_cli_test.go (update Enter-invariant assertions to look at the last of two calls)"
+    ],
+    "out_of_scope": [
+      "internal/setup/setup.go notify-agent.sh shell script and its tests - LEAVE UNTOUCHED, will be aligned in a later cleanup pass",
+      "features/swarmforge-cli.feature scenario 'notify-agent.sh helper script submits with Enter' - leave the script-content assertion as-is"
+    ]
+  },
+  "gherkin_added_or_updated": [
+    "swarmforge-cli.feature: 'Notify always submits the handoff with a standalone Enter keystroke' (UPDATED - was single-invocation, now two)",
+    "swarmforge-cli.feature: 'SendKeys delivers text and Enter as two separate tmux calls' (REPLACES old 'SendKeys helper always terminates input with Enter')",
+    "swarmforge-cli.feature: 'SendKeys waits a configurable pause between text and Enter' (NEW)",
+    "swarmforge-cli.feature: 'SendKeys defaults to a 200 millisecond pause when no pause is configured' (NEW)",
+    "swarmforge-cli.feature: 'SendKeys sleeper is injectable so tests run fast' (NEW)",
+    "swarmforge-cli.feature: 'Literal text send never has tmux key-name side effects' (NEW)"
   ],
-  "instructions": "Read features/swarmforge-integration.feature (8 scenarios). Write acceptance tests in internal/acceptance/swarmforge_integration_test.go. These tests MUST force the following changes to be made by the Coder:\n\n1. EXPAND start.Config to include: FS (setup.FS), LookPath (preflight.LookPathFunc), ConstitutionPath (string), Stdout (io.Writer)\n\n2. EXPAND start.Run() to call the FULL sequence:\n   a. preflight.Check(cfg.LookPath, 'tmux', 'claude', 'watch')\n   b. setup.EnsureDirs(cfg.FS, cfg.ProjectRoot)\n   c. setup.WriteHelperScripts(cfg.FS, cfg.ProjectRoot)\n   d. Read constitution file via cfg.FS.ReadFile(cfg.ConstitutionPath)\n   e. banner.Print(cfg.Stdout)\n   f. Kill existing session if present\n   g. Create tmux session + split grid + set pane titles\n   h. Generate 3 agent prompts via prompt.Build() and write them to temp files via cfg.FS.WriteFile\n   i. Launch 3 agents via tmux.LaunchAgent() in panes 0, 1, 2\n   j. Initialize metrics pane 3 with tail -f command\n\n3. CREATE a real Commander implementation (e.g. tmux.ExecCommander) that wraps os/exec.Command('tmux', args...)\n\n4. CREATE cmd/swarmforge/main.go that:\n   - Creates a real Commander, real FS, real LookPath\n   - Wires cli.Dispatch with handler functions that call start.Run, notify.Notify, swarmlog.Write\n   - Builds successfully with 'go build ./cmd/swarmforge/'\n\nYour acceptance tests should use RecordingCommander and FakeFS stubs (reuse or extend from existing tests) to verify the EXACT sequence of calls. The critical test is Scenario 1 which verifies the complete startup sequence.\n\nAfter writing tests, create agent_context/handoff-to-coder.json and notify pane 2.",
-  "timestamp": "2026-04-10T14:00:00Z"
+  "expected_behavior_from_production_code": {
+    "step_1_text_send": "tmux.SendKeys must first invoke the commander with arguments: 'send-keys', '-t', '<session>:<window>.<pane>', '-l', '<message>'. The -l flag is literal mode so a message containing the token 'Enter' is typed as five characters, not interpreted as the Enter key.",
+    "step_2_pause": "Between the two tmux invocations, a Sleeper must be called with a configurable duration (time.Duration). Default duration is 200 milliseconds.",
+    "step_3_enter_send": "Then invoke the commander with arguments: 'send-keys', '-t', '<session>:<window>.<pane>', 'Enter'. This second call carries ONLY the Enter key — no other payload.",
+    "sleeper_injection": "A Sleeper interface (e.g. `type Sleeper interface { Sleep(time.Duration) }`) must be injectable so tests can substitute a no-op. The real implementation wraps time.Sleep. Injection can be via a new function parameter, a struct field, or package-level variable — leave the design to the Coder, but the TESTS must substitute a recording sleeper and a no-op sleeper.",
+    "configurable_pause": "The pause duration must be configurable (e.g. via a parameter or struct field). The default, when unconfigured, is exactly 200 * time.Millisecond.",
+    "forbidden": [
+      "Do NOT clear the input before sending (no 'C-u' or similar prefix).",
+      "Do NOT use tmux paste buffers (no 'load-buffer' / 'paste-buffer').",
+      "Do NOT collapse the two calls back into one."
+    ]
+  },
+  "existing_tests_to_update": [
+    {
+      "test": "internal/tmux/tmux_test.go :: TestSendKeys",
+      "change": "Was asserting a single send-keys call with Enter as the last argument. Now must assert two invocations: first with '-l' and the payload, second with just 'Enter'. Introduce a recording sleeper stub."
+    },
+    {
+      "test": "internal/tmux/tmux_test.go :: any test that asserted the trailing 'Enter' argument of a single call",
+      "change": "Update to inspect the SECOND of two recorded calls. The invariant 'Enter is the final thing delivered' is preserved — it is now the final arg of the final call."
+    },
+    {
+      "test": "internal/notify/notify_test.go :: TestNotifyLogsAndSends (and any Enter-invariant test)",
+      "change": "Update to expect two recorded tmux calls per Notify. Standalone Enter must be the last call."
+    },
+    {
+      "test": "internal/acceptance/swarmforge_cli_test.go :: TestCLI_StartAttachesToSessionAsFinalStep and related",
+      "change": "The metrics pane init now produces two tmux calls (text + Enter) before Attach. Update the ordering assertion so that Attach is still the LAST call overall, but accept two preceding calls for the metrics tail command."
+    },
+    {
+      "test": "internal/start/start_test.go :: TestRunInitsMetricsPane",
+      "change": "Update to accept two send-keys calls for the metrics pane: one '-l' with 'tail -f logs/agent_messages.log', then one 'Enter'."
+    }
+  ],
+  "new_tests_to_add": [
+    {
+      "where": "internal/tmux/tmux_test.go",
+      "name_suggestion": "TestSendKeysSplitsTextAndEnter",
+      "assert": "Two recorded tmux calls. First has '-l' flag and the text. Second has exactly 'Enter' as its only non-target argument."
+    },
+    {
+      "where": "internal/tmux/tmux_test.go",
+      "name_suggestion": "TestSendKeysPausesBetweenCalls",
+      "assert": "A recording sleeper receives exactly one Sleep call between the first and second tmux invocations. The duration is the configured pause."
+    },
+    {
+      "where": "internal/tmux/tmux_test.go",
+      "name_suggestion": "TestSendKeysDefaultPauseIs200ms",
+      "assert": "When no pause is configured, the recorded Sleep duration equals 200 * time.Millisecond."
+    },
+    {
+      "where": "internal/tmux/tmux_test.go",
+      "name_suggestion": "TestSendKeysConfigurablePause",
+      "assert": "Setting pause to 750ms causes the sleeper to record exactly 750ms. Setting to 0 causes the sleeper to record 0 (still called, still one time)."
+    },
+    {
+      "where": "internal/tmux/tmux_test.go",
+      "name_suggestion": "TestSendKeysLiteralFlagAvoidsKeyNameInterpretation",
+      "assert": "Calling SendKeys with payload \"say Enter again\" produces a first tmux call containing '-l' and the literal string — the word 'Enter' inside the payload is NOT a separate argument. Only the second tmux call has 'Enter' as its single key argument."
+    },
+    {
+      "where": "internal/tmux/tmux_test.go",
+      "name_suggestion": "TestSendKeysSleeperIsInjectable",
+      "assert": "Substituting a no-op sleeper results in zero wall-clock sleeping (use a fake that counts calls but does not sleep). Both tmux invocations still occur in order."
+    }
+  ],
+  "ordering_invariant": "Across the whole system, after every handoff: the LAST tmux argument delivered to the target pane must be the literal key 'Enter', delivered as its own send-keys call. This is the new load-bearing invariant. Any test that previously asserted 'final argument of single call is Enter' must be rewritten to 'final tmux call to this pane is send-keys ... Enter with no other payload'.",
+  "do_not": [
+    "Do NOT touch the generated notify-agent.sh shell script or its tests — explicitly out of scope.",
+    "Do NOT remove the existing 'notify-agent.sh helper script submits with Enter' Gherkin scenario or its supporting test.",
+    "Do NOT introduce real time.Sleep into any test path. The sleeper must be mocked everywhere in tests.",
+    "Do NOT make writeAndLaunchAgents or createSession directly use time.Sleep — only tmux.SendKeys owns the pause."
+  ],
+  "done_looks_like": [
+    "All new Gherkin scenarios have at least one failing Go test that goes red for the RIGHT reason (missing two-step behavior, not compile error in unrelated code).",
+    "Updated tests listed above now assert the two-call pattern and still enforce Enter-as-final-delivery.",
+    "No existing green test has been deleted or loosened beyond what the two-call pattern requires.",
+    "agent_context/handoff-to-coder.json is written with a precise implementation punchlist for the Coder, including the Sleeper interface signature, the exact argument shapes, and a reminder that start.Run complexity is ALSO due for a Refactor pass (Rule 3 follow-up — carry that forward).",
+    "Pane 2 (Coder) is notified."
+  ],
+  "carry_forward_for_refactor_phase": "Rule 3 follow-up still pending: start.Run has cyclomatic complexity ~7, exceeding the Constitution limit of 4. The Coder must refactor Run into a pipeline (e.g. a []func(Config) error slice or split helpers) as part of making these new tests green — OR explicitly as a separate Refactor step immediately after Green, while keeping the tests green. Do not drop this on the floor.",
+  "timestamp": "2026-04-19T02:00:00Z"
 }

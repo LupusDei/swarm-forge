@@ -1,6 +1,9 @@
 package tmux
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+)
 
 // ExecCommander runs tmux commands via os/exec.
 type ExecCommander struct{}
@@ -18,4 +21,13 @@ func (e *ExecCommander) Run(args ...string) error {
 // HasSession returns true if tmux reports the named session exists.
 func (e *ExecCommander) HasSession(name string) bool {
 	return exec.Command("tmux", "has-session", "-t", name).Run() == nil
+}
+
+// Attach blocks while the user is attached to the named tmux session.
+func (e *ExecCommander) Attach(session string) error {
+	cmd := exec.Command("tmux", "attach-session", "-t", session)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }

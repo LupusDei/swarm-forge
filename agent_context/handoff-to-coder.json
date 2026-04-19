@@ -1,23 +1,127 @@
 {
   "from": "e2e-interpreter",
   "to": "coder",
-  "status": "pending",
-  "feature": "features/swarmforge-integration.feature",
-  "summary": "8 integration acceptance tests written in internal/acceptance/swarmforge_integration_test.go — ALL RED (compilation fails). Tests demand: expanded start.Config, full start.Run() sequence, tmux.NewExecCommander, and cmd/swarmforge/main.go.",
-  "artifacts": [
-    "features/swarmforge-integration.feature",
-    "internal/acceptance/swarmforge_integration_test.go",
-    "internal/start/start.go",
-    "internal/tmux/tmux.go",
-    "internal/setup/setup.go",
-    "internal/preflight/preflight.go",
-    "internal/banner/banner.go",
-    "internal/prompt/prompt.go",
-    "internal/prompt/roles.go",
-    "internal/swarmlog/swarmlog.go",
-    "internal/notify/notify.go",
-    "internal/cli/cli.go"
+  "status": "complete",
+  "id": "C5-two-step-send",
+  "summary": "C5 red phase complete. 11 failing Go tests force the two-call tmux.SendKeys delivery pattern (text with -l flag, pause via injectable Sleeper, then standalone Enter). The previous C4 single-call Enter-invariant tests have been rewritten to inspect the LAST of TWO calls — the spirit is preserved: Enter is still the final thing delivered to the pane. The notify-agent.sh shell script and its test are explicitly out of scope and untouched.",
+  "tests_currently_red": [
+    "internal/tmux/tmux_test.go :: TestSendKeysFinalArgIsLiteralEnter (updated from C4)",
+    "internal/tmux/tmux_test.go :: TestSendKeysSplitsTextAndEnter",
+    "internal/tmux/tmux_test.go :: TestSendKeysPausesBetweenCalls",
+    "internal/tmux/tmux_test.go :: TestSendKeysDefaultPauseIs200ms",
+    "internal/tmux/tmux_test.go :: TestSendKeysConfigurablePause",
+    "internal/tmux/tmux_test.go :: TestSendKeysLiteralFlagAvoidsKeyNameInterpretation",
+    "internal/tmux/tmux_test.go :: TestSendKeysSleeperIsInjectable",
+    "internal/notify/notify_test.go :: TestNotifyFinalArgIsLiteralEnter (updated from C4)",
+    "internal/start/start_test.go :: TestRunInitsMetricsPaneAsTwoSendKeysCalls",
+    "internal/acceptance/swarmforge_cli_test.go :: TestCLI_NotifyAlwaysSubmitsWithEnter (updated from C4)",
+    "internal/acceptance/swarmforge_cli_test.go :: TestCLI_SendKeysTerminatesWithEnter (updated from C4)"
   ],
-  "instructions": "8 integration tests are RED in internal/acceptance/swarmforge_integration_test.go. They fail to compile. Follow TDD to make them pass. Here's exactly what must change:\n\n## 1. Expand start.Config (internal/start/start.go)\nAdd these fields:\n  - FS               setup.FS\n  - LookPath         preflight.LookPathFunc\n  - ConstitutionPath string\n  - Stdout           io.Writer\n\nImport setup, preflight, io packages.\n\n## 2. Expand start.Run() to perform FULL sequence:\n  a. preflight.Check(cfg.LookPath, \"tmux\", \"claude\", \"watch\") — fail fast if error\n  b. setup.EnsureDirs(cfg.FS, cfg.ProjectRoot)\n  c. setup.WriteHelperScripts(cfg.FS, cfg.ProjectRoot)\n  d. Read constitution: cfg.FS.ReadFile(cfg.ProjectRoot + \"/\" + cfg.ConstitutionPath)\n     - If error, return fmt.Errorf wrapping 'constitution' in the message\n  e. banner.Print(cfg.Stdout)\n  f. Kill existing session if cfg.Commander.HasSession(cfg.Session)\n  g. tmux.CreateSession, SplitGrid, SetPaneTitles\n  h. Generate 3 agent prompts and write to cfg.FS:\n     - Architect: prompt.Build(AgentConfig{Role:\"Architect\", Instructions:prompt.ArchitectInstructions, Session:cfg.Session, ProjectRoot:cfg.ProjectRoot}, constitution)\n     - E2E-Interpreter: same with E2EInterpreterInstructions\n     - Coder: same with CoderInstructions\n     - Write each to: cfg.ProjectRoot + \"/.swarmforge/prompts/\" + name + \".md\"\n     - Must MkdirAll the prompts dir first\n  i. tmux.LaunchAgent for panes 0 (Architect), 1 (E2E-Interpreter), 2 (Coder)\n     - promptFile = cfg.ProjectRoot + \"/.swarmforge/prompts/\" + name + \".md\"\n  j. tmux.SendKeys(cmd, session, \"swarm\", 3, \"cd '\" + projectRoot + \"' && touch logs/agent_messages.log && tail -f logs/agent_messages.log\")\n\nIMPORTANT: The existing TestCLI_StartKillsExistingSession test passes start.Config WITHOUT the new fields. You must make the new fields have sensible zero-value behavior OR update that test. Recommended: check the existing test in swarmforge_cli_test.go and update it to pass the new required fields.\n\n## 3. Create tmux.NewExecCommander() (internal/tmux/exec.go)\n  - ExecCommander struct wrapping os/exec\n  - Run(args ...string) error — exec.Command(\"tmux\", args...).Run()\n  - HasSession(name string) bool — exec.Command(\"tmux\", \"has-session\", \"-t\", name).Run() == nil\n  - NewExecCommander() *ExecCommander\n  - Must satisfy tmux.Commander interface\n\n## 4. Create cmd/swarmforge/main.go\n  - package main with func main()\n  - Create real ExecCommander, real FS (os-backed), exec.LookPath as LookPath\n  - Wire cli.Dispatch with:\n    - \"start\" → start.Run with full Config\n    - \"notify\" → notify.Notify\n    - \"log\" → swarmlog logger.Write\n  - Must build: go build ./cmd/swarmforge/\n\n## 5. Update existing TestCLI_StartKillsExistingSession\nIn swarmforge_cli_test.go, the test at line ~220 creates start.Config with only Commander/Session/ProjectRoot. Add the new required fields (FS, LookPath, ConstitutionPath, Stdout) so it compiles. Use a FakeFS with a constitution file, a passing lookPath, and a bytes.Buffer for Stdout.\n\nRun: go test ./internal/acceptance/ -v to verify ALL tests pass (integration + CLI + original).",
-  "timestamp": "2026-04-10T14:30:00Z"
+  "existing_tests_still_green": [
+    "internal/setup/setup_test.go :: TestNotifyAgentScriptSendKeysLineEndsWithEnter — EXPLICITLY out of scope; do not touch the shell script",
+    "internal/acceptance/swarmforge_cli_test.go :: TestCLI_NotifyAgentScriptSubmitsWithEnter — same",
+    "All C1/C2/C3 regression tests — still green",
+    "TestSendKeys, TestLaunchAgent, TestCLI_MetricsPaneTailsLog, TestCLI_NotifyLogsAndSendsMessage — lenient enough to remain green through the two-call transition"
+  ],
+  "scaffolding_already_added_to_production": {
+    "file": "internal/tmux/tmux.go",
+    "additions": [
+      "type Sleeper interface { Sleep(d time.Duration) } — injection point, tests pass recording or no-op sleepers",
+      "type SendKeysOption func(*sendKeysConfig) — variadic option for SendKeys",
+      "type sendKeysConfig struct { sleeper Sleeper; pause time.Duration } — unexported applied config",
+      "func WithSleeper(s Sleeper) SendKeysOption — injects a sleeper",
+      "func WithPause(d time.Duration) SendKeysOption — sets the inter-call pause",
+      "SendKeys signature changed to: func SendKeys(cmd Commander, session, window string, pane int, keys string, opts ...SendKeysOption) error — variadic keeps old callers valid"
+    ],
+    "note": "These are TYPE DEFINITIONS and a SIGNATURE EXTENSION only — no behavior change. The old one-call body is still there. Your job is to replace the body with the two-call pattern and thread opts through downstream callers."
+  },
+  "implementation_punchlist": [
+    {
+      "step": 1,
+      "file": "internal/tmux/tmux.go",
+      "change": "Replace the body of tmux.SendKeys with the two-call pattern. Pseudocode:",
+      "pseudocode": [
+        "cfg := sendKeysConfig{sleeper: realSleeper{}, pause: 200 * time.Millisecond}",
+        "for _, opt := range opts { opt(&cfg) }",
+        "if cfg.sleeper == nil { cfg.sleeper = realSleeper{} }",
+        "if cfg.pause == 0 { cfg.pause = 200 * time.Millisecond } // NOTE: TestSendKeysConfigurablePause asserts pause==0 records 0 sleep — see below",
+        "target := fmt.Sprintf(\"%s:%s.%d\", session, window, pane)",
+        "if err := cmd.Run(\"send-keys\", \"-t\", target, \"-l\", keys); err != nil { return err }",
+        "cfg.sleeper.Sleep(cfg.pause)",
+        "return cmd.Run(\"send-keys\", \"-t\", target, \"Enter\")"
+      ],
+      "pause_zero_note": "TestSendKeysConfigurablePause iterates over pauses [0, 50ms, 750ms] and asserts the sleeper receives exactly that duration. So if pause==0 is EXPLICITLY passed via WithPause(0), the sleeper MUST still be called once with 0. Distinguish 'not configured' (nil option) from 'configured to 0'. Simplest approach: make pause a *time.Duration in sendKeysConfig, or track a 'configured' bool, or init cfg.pause = -1 and treat -1 as unconfigured. Your choice."
+    },
+    {
+      "step": 2,
+      "file": "internal/tmux/tmux.go",
+      "change": "Add a realSleeper type (unexported) that wraps time.Sleep:",
+      "pseudocode": [
+        "type realSleeper struct{}",
+        "func (realSleeper) Sleep(d time.Duration) { time.Sleep(d) }"
+      ]
+    },
+    {
+      "step": 3,
+      "file": "internal/notify/notify.go",
+      "change": "Extend Notify to accept variadic tmux.SendKeysOption so tests can inject a sleeper. New signature:",
+      "pseudocode": [
+        "func Notify(cmd tmux.Commander, logger *swarmlog.Logger, session string, pane int, message string, opts ...tmux.SendKeysOption) error {",
+        "    role := fmt.Sprintf(\"pane %d\", pane)",
+        "    if err := logger.Write(role, message); err != nil { return err }",
+        "    return tmux.SendKeys(cmd, session, \"swarm\", pane, message, opts...)",
+        "}"
+      ],
+      "why": "Without this, TestNotifyFinalArgIsLiteralEnter burns 200ms of real wall-clock sleep per run. The handoff explicitly forbids real sleep in test paths. Note: the test currently does NOT pass opts — it accepts the 200ms cost for now. If you'd rather the test runs fast, also thread opts through from the acceptance test call site and switch the test to pass tmux.WithSleeper(noop). Either way, the production signature must accept opts."
+    },
+    {
+      "step": 4,
+      "file": "internal/start/start.go + internal/start/start_test.go",
+      "change": "Thread a Sleeper through start.Config so metrics-pane SendKeys can use a no-op in tests. Suggested approach — add fields to start.Config:",
+      "pseudocode": [
+        "type Config struct {",
+        "    ... existing fields ...",
+        "    Sleeper tmux.Sleeper   // nil => real time.Sleep in metrics init",
+        "    Pause   time.Duration  // 0 => 200ms default",
+        "}"
+      ],
+      "then": "In initMetricsPane, build []tmux.SendKeysOption from cfg.Sleeper / cfg.Pause (skip WithSleeper if cfg.Sleeper == nil, skip WithPause if cfg.Pause == 0) and pass to tmux.SendKeys. In start_test.go's fullCfg helper, set Config.Sleeper to a no-op so TestRunInitsMetricsPaneAsTwoSendKeysCalls (and other start tests) do not sleep."
+    },
+    {
+      "step": 5,
+      "file": "cmd/swarmforge/main.go",
+      "change": "Leave Sleeper / Pause at their zero values so production uses the real time.Sleep + 200ms default. No explicit wiring needed beyond accepting the new Config shape."
+    },
+    {
+      "step": 6,
+      "file": "internal/acceptance/swarmforge_cli_test.go",
+      "change": "TestCLI_NotifyAlwaysSubmitsWithEnter: I did NOT thread opts through this test yet because notify.Notify's current signature does not accept them. Once you extend notify.Notify (step 3), please add `tmux.WithSleeper(noopAcceptanceSleeper{})` to the Notify call in this acceptance test so it does not sleep 200ms. The helper `noopAcceptanceSleeper` is already defined at the bottom of that file."
+    }
+  ],
+  "new_invariant": "Across the whole system, after every handoff: the LAST tmux call to the target pane is `send-keys -t <target> Enter` — with Enter as its only non-target argument. The preceding call is `send-keys -t <target> -l <payload>` with the literal-text flag so payloads containing 'Enter' are typed as five characters, not interpreted as the Enter key. A Sleeper runs exactly once between the two calls.",
+  "forbidden": [
+    "Do NOT touch internal/setup/setup.go notify-agent.sh template or its tests — out of scope for C5.",
+    "Do NOT remove the existing 'notify-agent.sh helper script submits with Enter' Gherkin scenario or its supporting test.",
+    "Do NOT introduce real time.Sleep into any test path. Every test must either inject a no-op/recording sleeper or go through a code path that does.",
+    "Do NOT clear the input before sending (no 'C-u' or similar). Do NOT use tmux paste buffers. Do NOT collapse back to a single send-keys call."
+  ],
+  "how_to_verify": [
+    "`go test ./...` — the 11 listed red tests must turn green; no previously-green test may regress.",
+    "`go vet ./...` — clean.",
+    "`go build ./cmd/swarmforge/` — succeeds.",
+    "Spot-check timing: `go test -run TestSendKeysSleeperIsInjectable -v ./internal/tmux/` completes in well under 1 second (the test itself asserts this)."
+  ],
+  "rule_3_refactor_carry_forward": {
+    "why": "start.Run had cyclomatic complexity ~7 after C3 (exceeds Constitution's limit of ≤ 4). C5 adds more plumbing for Sleeper/Pause — if you inline it into Run you will make the violation worse.",
+    "what_to_do": "As part of making C5 green (or immediately after, as a named Refactor step while keeping tests green), split start.Run into a pipeline. Suggested shapes: a []func(Config) error slice executed in order with early-exit on error, or extracted named helpers (runPreflight, runSetup, readConstitution, printBanner, createOrReplaceSession, writeAndLaunchAgents, initMetricsPane, attachToSession). Each helper stays under the complexity cap and Run becomes a short orchestrator.",
+    "do_not_drop_this": "If you only do C5 and skip the refactor, the Simplicity Enforcer will reject the change. Carry this forward."
+  },
+  "constitution_reminders": [
+    "Rule 1 (TDD): 11 red tests define the contract. Write the minimum production code to turn each green.",
+    "Rule 3 (Simplicity): every method stays ≤ 4 cyclomatic complexity and ≤ 30 lines. tmux.SendKeys, notify.Notify, start.Run are the hot spots. Apply the start.Run refactor above.",
+    "Rule 4 (Mutation testing): once tests are green, the Mutation Hunter will try to flip operators in the new two-call logic. If a mutant survives (e.g. removing the Sleep call or swapping call order), add a test that kills it.",
+    "Rule 5 (Linter): gofmt/go vet clean on every file you touch."
+  ],
+  "when_you_are_done": "Write agent_context/handoff-to-architect.json summarizing what changed (files touched, design choices for Sleeper default and pause-zero semantics, confirmation of the Rule 3 start.Run refactor), then notify pane 0.",
+  "timestamp": "2026-04-19T02:00:00Z"
 }

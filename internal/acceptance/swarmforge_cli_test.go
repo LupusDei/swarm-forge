@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/swarm-forge/swarm-forge/internal/banner"
 	"github.com/swarm-forge/swarm-forge/internal/cli"
@@ -37,6 +38,13 @@ func (r *RecordingCommander) Run(args ...string) error {
 
 func (r *RecordingCommander) HasSession(name string) bool {
 	return r.Sessions[name]
+}
+
+// Attach satisfies the forthcoming tmux.Commander.Attach method.
+// It records the call so tests can assert ordering.
+func (r *RecordingCommander) Attach(session string) error {
+	r.Calls = append(r.Calls, []string{"attach-session", "-t", session})
+	return nil
 }
 
 // FakeFS records filesystem operations for verification.
@@ -147,28 +155,6 @@ func TestCLI_DirectorySetupCreatesRequiredDirs(t *testing.T) {
 	}
 }
 
-// ── Scenario 4: Helper scripts generated for backward compat ────────
-
-func TestCLI_HelperScriptsAreGenerated(t *testing.T) {
-	// Given a project root directory exists
-	fs := NewFakeFS()
-	root := "/project"
-
-	// When setup writes helper scripts to the project root
-	err := setup.WriteHelperScripts(fs, root)
-	if err != nil {
-		t.Fatalf("WriteHelperScripts error: %v", err)
-	}
-
-	// Then "notify-agent.sh" and "swarm-log.sh" exist
-	for _, name := range []string{"notify-agent.sh", "swarm-log.sh"} {
-		path := root + "/" + name
-		if _, ok := fs.Files[path]; !ok {
-			t.Fatalf("%q was not written; files=%v", path, fileKeys(fs))
-		}
-	}
-}
-
 // ── Scenario 5: Agent prompt includes role and constitution ─────────
 
 func TestCLI_PromptIncludesRoleAndConstitution(t *testing.T) {
@@ -210,8 +196,8 @@ func TestCLI_PromptIncludesCoordinationInstructions(t *testing.T) {
 	result := prompt.Build(cfg, constitution)
 
 	// Then the prompt contains coordination references
-	assertContains(t, result, "notify-agent.sh")
-	assertContains(t, result, "swarm-log.sh")
+	assertContains(t, result, "./swarmforge notify")
+	assertContains(t, result, "./swarmforge log")
 	assertContains(t, result, "agent_context/")
 }
 
@@ -440,6 +426,253 @@ func TestCLI_DispatchesSubcommands(t *testing.T) {
 	}
 }
 
+// ── C1: E2E-Interpreter prompt scopes to coverage only ─────────────
+
+func TestCLI_E2EInterpreterPromptScopesToCoverage(t *testing.T) {
+	// Given a constitution with content "Constitution content"
+	// And the agent role is "E2E-Interpreter" with standard instructions
+	cfg := prompt.AgentConfig{
+		Role:         "E2E-Interpreter",
+		Instructions: prompt.E2EInterpreterInstructions,
+		Session:      "swarmforge",
+		ProjectRoot:  "/project",
+	}
+
+	// When the prompt builder generates the prompt
+	result := prompt.Build(cfg, "Constitution content")
+
+	// Then the prompt contains the coverage-only phrases
+	assertContains(t, result, "cover every Gherkin scenario with a failing end-to-end test")
+	assertContains(t, result, "hand off the failing E2E tests to the Coder")
+
+	// And the prompt does not contain the forbidden responsibility claim
+	forbidden := "Ensure all Gherkin scenarios pass before any feature is marked complete"
+	if strings.Contains(result, forbidden) {
+		t.Fatalf("E2E-Interpreter prompt must not contain %q; got:\n%s", forbidden, result)
+	}
+}
+
+// ── C1: Coder prompt states responsibility for making E2E tests pass ──
+
+func TestCLI_CoderPromptStatesResponsibilityForE2ETests(t *testing.T) {
+	// Given a constitution with content "Constitution content"
+	// And the agent role is "Coder" with standard instructions
+	cfg := prompt.AgentConfig{
+		Role:         "Coder",
+		Instructions: prompt.CoderInstructions,
+		Session:      "swarmforge",
+		ProjectRoot:  "/project",
+	}
+
+	// When the prompt builder generates the prompt
+	result := prompt.Build(cfg, "Constitution content")
+
+	// Then the prompt states responsibility for receiving and passing E2E tests
+	assertContains(t, result, "receive failing end-to-end tests from the E2E Interpreter")
+	assertContains(t, result, "implement the feature until every E2E test passes")
+}
+
+// ── C2: Log entries are separated for readability in the Metrics pane ──
+
+func TestCLI_LogEntriesAreSeparatedForReadability(t *testing.T) {
+	// Given a log writer is configured
+	var buf bytes.Buffer
+	logger := swarmlog.New(&buf)
+
+	// When the user logs a message with role "Architect" and text "task started"
+	if err := logger.Write("Architect", "task started"); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	// Then the log writer output contains a separator line of "========"
+	assertContains(t, buf.String(), "========")
+
+	// And the log writer output ends with a newline character
+	if !strings.HasSuffix(buf.String(), "\n") {
+		t.Fatalf("expected output to end with newline; got: %q", buf.String())
+	}
+
+	// When the user logs a second message with role "Coder" and text "tests green"
+	if err := logger.Write("Coder", "tests green"); err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	// Then output contains both entries
+	output := buf.String()
+	assertContains(t, output, "task started")
+	assertContains(t, output, "tests green")
+
+	// And the separator "========" appears between the two entries
+	firstIdx := strings.Index(output, "task started")
+	secondIdx := strings.Index(output, "tests green")
+	if firstIdx < 0 || secondIdx < 0 || firstIdx >= secondIdx {
+		t.Fatalf("entries missing or out of order in output:\n%s", output)
+	}
+	between := output[firstIdx:secondIdx]
+	if !strings.Contains(between, "========") {
+		t.Fatalf("separator '========' must appear between entries; between:\n%s", between)
+	}
+}
+
+// ── C5 (updated from C4): Notify splits delivery into text + standalone Enter ──
+
+func TestCLI_NotifyAlwaysSubmitsWithEnter(t *testing.T) {
+	// Given a recording tmux commander
+	var logBuf bytes.Buffer
+	logger := swarmlog.New(&logBuf)
+	cmd := NewRecordingCommander()
+
+	// When the user runs notify for pane 2 with message "handoff ready"
+	if err := notify.Notify(cmd, logger, "swarmforge", 2, "handoff ready",
+		tmux.WithSleeper(noopAcceptanceSleeper{})); err != nil {
+		t.Fatalf("Notify error: %v", err)
+	}
+
+	// Then two "send-keys" invocations are recorded in order
+	var sendKeys [][]string
+	for _, c := range cmd.Calls {
+		if len(c) > 0 && c[0] == "send-keys" {
+			sendKeys = append(sendKeys, c)
+		}
+	}
+	if len(sendKeys) != 2 {
+		t.Fatalf("notify must produce exactly 2 send-keys invocations; got %d: %v",
+			len(sendKeys), sendKeys)
+	}
+
+	// And both invocations target "swarmforge:swarm.2"
+	for i, c := range sendKeys {
+		assertContains(t, strings.Join(c, " "), "swarmforge:swarm.2")
+		_ = i
+	}
+
+	// And the first invocation uses '-l' and carries the message
+	first := sendKeys[0]
+	firstHasLiteral := false
+	for _, a := range first {
+		if a == "-l" {
+			firstHasLiteral = true
+			break
+		}
+	}
+	if !firstHasLiteral {
+		t.Errorf("first invocation must use the '-l' literal flag; got: %v", first)
+	}
+	assertContains(t, strings.Join(first, " "), "handoff ready")
+
+	// And the first invocation does NOT include the argument "Enter"
+	for _, a := range first {
+		if a == "Enter" {
+			t.Errorf("first invocation must NOT include 'Enter' (that is the second call); got: %v", first)
+		}
+	}
+
+	// And the second invocation's final argument is exactly "Enter", carrying no payload
+	second := sendKeys[1]
+	if second[len(second)-1] != "Enter" {
+		t.Errorf("second invocation's final arg must be exactly 'Enter'; got %q; full: %v",
+			second[len(second)-1], second)
+	}
+	for _, a := range second {
+		if strings.Contains(a, "handoff ready") {
+			t.Errorf("second invocation must NOT carry the payload — Enter only; got: %v", second)
+		}
+	}
+}
+
+// ── C5 (updated from C4): SendKeys delivers text and Enter as two tmux calls ──
+
+func TestCLI_SendKeysTerminatesWithEnter(t *testing.T) {
+	// Given a recording tmux commander
+	cmd := NewRecordingCommander()
+
+	// When SendKeys is called for session "swarmforge" window "swarm" pane 1 with keys "any payload"
+	// A sleeper is injected via tmux.WithSleeper so no real time is spent in tests.
+	// Note: tests import via the tmux package helpers; see internal/tmux/tmux_test.go
+	// for the recording sleeper definition. This acceptance test uses a minimal no-op.
+	noop := noopAcceptanceSleeper{}
+	if err := tmux.SendKeys(cmd, "swarmforge", "swarm", 1, "any payload",
+		tmux.WithSleeper(noop)); err != nil {
+		t.Fatalf("SendKeys error: %v", err)
+	}
+
+	// Then exactly two tmux invocations are recorded
+	if len(cmd.Calls) != 2 {
+		t.Fatalf("SendKeys must make exactly 2 tmux calls; got %d: %v", len(cmd.Calls), cmd.Calls)
+	}
+
+	// And the first is '-l' + payload, second is standalone 'Enter'
+	first := cmd.Calls[0]
+	firstHasLiteral := false
+	for _, a := range first {
+		if a == "-l" {
+			firstHasLiteral = true
+			break
+		}
+	}
+	if !firstHasLiteral {
+		t.Errorf("first call must include '-l'; got: %v", first)
+	}
+	assertContains(t, strings.Join(first, " "), "any payload")
+
+	second := cmd.Calls[1]
+	if len(second) == 0 || second[len(second)-1] != "Enter" {
+		t.Errorf("second call's final arg must be exactly 'Enter'; got: %v", second)
+	}
+	// Omitting either the '-l' text call or the trailing standalone Enter call
+	// is a violation of the handoff contract (this test's failures ARE the violation).
+}
+
+// ── C3: Start sequence attaches the user to the tmux session after launch ──
+
+func TestCLI_StartAttachesToSessionAsFinalStep(t *testing.T) {
+	// Given no tmux session named "swarmforge" exists
+	cmd := NewRecordingCommander()
+	fs := NewFakeFS()
+	fs.Files["/project/Constitution.md"] = []byte("constitution")
+	var stdout bytes.Buffer
+
+	// When the start sequence completes all setup steps
+	cfgStart := start.Config{
+		Commander:        cmd,
+		Session:          "swarmforge",
+		ProjectRoot:      "/project",
+		FS:               fs,
+		LookPath:         func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		ConstitutionPath: "Constitution.md",
+		Stdout:           &stdout,
+	}
+	if err := start.Run(cfgStart); err != nil {
+		t.Fatalf("start.Run error: %v", err)
+	}
+
+	// Then the commander attaches to session "swarmforge"
+	attachIdx := lastIndexOfCallContaining(cmd.Calls, "attach-session")
+	if attachIdx < 0 {
+		t.Fatalf("commander must attach to 'swarmforge' session; calls=%v", cmd.Calls)
+	}
+	attachJoined := strings.Join(cmd.Calls[attachIdx], " ")
+	if !strings.Contains(attachJoined, "swarmforge") {
+		t.Fatalf("attach call must target 'swarmforge'; got: %v", cmd.Calls[attachIdx])
+	}
+
+	// And the attach step occurs after the metrics pane is initialized
+	metricsIdx := lastIndexOfCallContaining(cmd.Calls, "tail -f logs/agent_messages.log")
+	if metricsIdx < 0 {
+		t.Fatalf("metrics pane init missing; calls=%v", cmd.Calls)
+	}
+	if attachIdx <= metricsIdx {
+		t.Fatalf("attach must come after metrics pane init; attachIdx=%d metricsIdx=%d",
+			attachIdx, metricsIdx)
+	}
+
+	// And the attach step is the final action of the start sequence
+	if attachIdx != len(cmd.Calls)-1 {
+		t.Fatalf("attach must be the final call; attachIdx=%d total=%d calls=%v",
+			attachIdx, len(cmd.Calls), cmd.Calls)
+	}
+}
+
 // ── Scenario 14: Full startup banner is displayed ───────────────────
 
 func TestCLI_StartupBannerDisplayed(t *testing.T) {
@@ -502,10 +735,24 @@ func countCallsContaining(calls [][]string, keyword string) int {
 	return count
 }
 
-func fileKeys(fs *FakeFS) []string {
-	keys := make([]string, 0, len(fs.Files))
-	for k := range fs.Files {
-		keys = append(keys, k)
+// lastIndexOfCallContaining returns the index of the last call whose args contain keyword, or -1.
+func lastIndexOfCallContaining(calls [][]string, keyword string) int {
+	idx := -1
+	for i, call := range calls {
+		for _, arg := range call {
+			if strings.Contains(arg, keyword) {
+				idx = i
+				break
+			}
+		}
 	}
-	return keys
+	return idx
 }
+
+// noopAcceptanceSleeper satisfies tmux.Sleeper without doing any wall-clock sleeping.
+// Acceptance-layer tests use this to prove the two-call pattern without burning 200ms
+// per SendKeys invocation.
+type noopAcceptanceSleeper struct{}
+
+func (noopAcceptanceSleeper) Sleep(_ time.Duration) {}
+

@@ -51,7 +51,7 @@ SwarmForge turns raw AI coding speed into **reliable, scalable, maintainable eng
 ## 5. How It Works (High-Level Workflow)
 
 1. **Launch**  
-   User runs `./swarmforge.sh` → tmux session starts with pre-configured panes for each agent role.
+   User runs `./swarmforge start` → tmux session starts with pre-configured panes for each agent role.
 
 2. **Task Intake**  
    User describes a feature in the Architect pane or drops a new `features/*.feature` Gherkin file.

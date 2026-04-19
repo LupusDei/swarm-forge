@@ -18,32 +18,3 @@ func EnsureDirs(fs FS, root string) error {
 	}
 	return nil
 }
-
-const notifyScript = `#!/bin/bash
-# Usage: ./notify-agent.sh <target-pane-index> "message"
-# Panes: 0=Architect, 1=E2E Interpreter, 2=Coder, 3=Metrics
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-echo "[$TIMESTAMP] [pane $1] $2" >> logs/agent_messages.log
-tmux send-keys -t swarmforge:swarm.$1 "$2" Enter
-`
-
-const logScript = `#!/bin/bash
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-echo "[$TIMESTAMP] [$1] $2" >> logs/agent_messages.log
-echo "[$1] $2"
-`
-
-// WriteHelperScripts generates backward-compatible shell scripts.
-func WriteHelperScripts(fs FS, root string) error {
-	scripts := map[string]string{
-		"notify-agent.sh": notifyScript,
-		"swarm-log.sh":    logScript,
-	}
-	for name, content := range scripts {
-		path := root + "/" + name
-		if err := fs.WriteFile(path, []byte(content), 0o755); err != nil {
-			return err
-		}
-	}
-	return nil
-}
