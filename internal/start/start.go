@@ -77,10 +77,8 @@ func readConstitution(cfg Config) (string, error) {
 }
 
 func createSession(cfg Config) error {
-	if cfg.Commander.HasSession(cfg.Session) {
-		if err := tmux.KillSession(cfg.Commander, cfg.Session); err != nil {
-			return err
-		}
+	if err := killExistingSession(cfg); err != nil {
+		return err
 	}
 	if err := tmux.CreateSession(cfg.Commander, cfg.Session, window); err != nil {
 		return err
@@ -91,37 +89,54 @@ func createSession(cfg Config) error {
 	return tmux.SetPaneTitles(cfg.Commander, cfg.Session, window)
 }
 
+func killExistingSession(cfg Config) error {
+	if !cfg.Commander.HasSession(cfg.Session) {
+		return nil
+	}
+	return tmux.KillSession(cfg.Commander, cfg.Session)
+}
+
+type agentEntry struct {
+	pane         int
+	name         string
+	instructions string
+}
+
+func agentRoster() []agentEntry {
+	return []agentEntry{
+		{0, "Architect", prompt.ArchitectInstructions},
+		{1, "E2E-Interpreter", prompt.E2EInterpreterInstructions},
+		{2, "Coder", prompt.CoderInstructions},
+	}
+}
+
 func writeAndLaunchAgents(cfg Config, constitution string) error {
 	promptsDir := cfg.ProjectRoot + "/.swarmforge/prompts"
 	if err := cfg.FS.MkdirAll(promptsDir, 0o755); err != nil {
 		return err
 	}
-	agents := []struct {
-		pane         int
-		name         string
-		instructions string
-	}{
-		{0, "Architect", prompt.ArchitectInstructions},
-		{1, "E2E-Interpreter", prompt.E2EInterpreterInstructions},
-		{2, "Coder", prompt.CoderInstructions},
-	}
-	for _, a := range agents {
-		acfg := prompt.AgentConfig{
-			Role:         a.name,
-			Instructions: a.instructions,
-			Session:      cfg.Session,
-			ProjectRoot:  cfg.ProjectRoot,
-		}
-		content := prompt.Build(acfg, constitution)
-		promptFile := promptsDir + "/" + a.name + ".md"
-		if err := cfg.FS.WriteFile(promptFile, []byte(content), 0o644); err != nil {
-			return err
-		}
-		if err := tmux.LaunchAgent(cfg.Commander, cfg.Session, a.pane, a.name, promptFile, cfg.ProjectRoot); err != nil {
+	for _, a := range agentRoster() {
+		if err := writeAndLaunchAgent(cfg, constitution, promptsDir, a); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func writeAndLaunchAgent(cfg Config, constitution, promptsDir string, a agentEntry) error {
+	acfg := prompt.AgentConfig{
+		Role:         a.name,
+		Instructions: a.instructions,
+		Session:      cfg.Session,
+		ProjectRoot:  cfg.ProjectRoot,
+	}
+	content := prompt.Build(acfg, constitution)
+	promptFile := promptsDir + "/" + a.name + ".md"
+	if err := cfg.FS.WriteFile(promptFile, []byte(content), 0o644); err != nil {
+		return err
+	}
+	return tmux.LaunchAgent(cfg.Commander, cfg.Session, a.pane, a.name,
+		promptFile, cfg.ProjectRoot)
 }
 
 func initMetricsPane(cfg Config) error {

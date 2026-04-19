@@ -31,12 +31,21 @@
 [2026-04-19 12:57:22] [Coder] C5 green. 11 red tests pass; tmux.SendKeys is now two-call with injectable Sleeper; start.Run refactored to pipeline (cyclomatic 3). Full suite + vet + build clean.
 [2026-04-19 12:57:26] [pane 0] C5 two-step-send complete. 11 red tests green; full go test ./... passes; vet + build clean. Also did the Rule 3 start.Run carry-forward refactor in the same pass (Run is now cyclomatic 3, all helpers ≤ 4). See agent_context/handoff-to-architect.json for the full diff summary + design choices.
 [2026-04-19 12:58:58] [Architect] ACCEPTED C5 + Rule 3 Run refactor. All 11 C5 tests green with mutation-proof assertions (exact 2-call count, -l flag required, callIndexAtSleep==1, default pause 200ms locked, sleeper injection proven via 200x500ms<1s). Shell script untouched per scope. Run CC=3. Follow-up: createSession and writeAndLaunchAgents still CC=5 (pre-existing).
-[2026-04-19 13:35:00] [pane 1] Test message from Architect - please acknowledge
-[2026-04-19 13:51:29] [pane 2] Test message from Architect - please confirm receipt
+[2026-04-19 13:51:29] [pane 2] Test glorious message from Architect - please confirm receipt
 ========
-[2026-04-19 13:51:47] [pane 1] Test message from Coder - please confirm receipt
+[2026-04-19 14:08:28] [Architect] C6-crap-subcommand: Gherkin feature authored at features/swarmforge-crap.feature. Handoff to E2E Interpreter at agent_context/handoff-to-e2e.json. Scope = CRAP analyzer subcommand, stdlib only, formula CRAP = CC^2*(1-cov)^3 + CC, thresholds CC<=4 CRAP<30, exit codes 0/1/2.
 ========
-[2026-04-19 13:52:00] [pane 0] Message from E2E Interpreter - confirming coordination channel is working
+[2026-04-19 14:08:32] [pane 1] C6-crap-subcommand: New handoff at agent_context/handoff-to-e2e.json. Gherkin at features/swarmforge-crap.feature defines swarmforge crap subcommand (CRAP = CC^2*(1-cov)^3 + CC; thresholds CC<=4, CRAP<30; exit codes 0/1/2; stdlib only). Your deliverable: failing acceptance + unit tests covering every scenario, no production code. Package target is internal/crap. Expected signatures and scenario-to-test map are in the handoff JSON. When your red tests are in place, write agent_context/handoff-to-coder.json and notify pane 2.
 ========
-[2026-04-19 13:52:11] [Architect] Coordination channel with E2E Interpreter confirmed working
+[2026-04-19 14:20:00] [E2E-Interpreter] C6 red tests in place: internal/crap/* + internal/acceptance/swarmforge_crap_test.go + internal/cli TestDispatchCrap. Handoff at agent_context/handoff-to-coder.json.
+========
+[2026-04-19 14:20:01] [pane 2] crap subcommand: red tests ready, handoff at agent_context/handoff-to-coder.json
+========
+[2026-04-19 14:36:32] [Coder] C6 crap subcommand: green incl. self-application; handoff-to-architect.json written
+========
+[2026-04-19 14:36:32] [pane 0] C6 crap subcommand complete: all tests green incl. TestCrap_SelfApplicationIsClean. Self-application exit 0 against repo. Handoff at agent_context/handoff-to-architect.json
+========
+[2026-04-19 14:37:39] [Architect] C6-crap-subcommand ACCEPTED. Verified: go test -short ./... PASS, go vet clean, go.mod unchanged (stdlib only), swarmforge crap self-application exit=0 with top CRAP=20.00 (printResults). Exit codes confirmed: 0 clean, 1 violation (--threshold-cc=2), 2 usage (missing --coverprofile), 2 I/O (bad path). JSON output valid. Rule 3 carry-forward satisfied (5 pre-existing CC=5 functions refactored to CC<=4).
+========
+[2026-04-19 14:37:45] [pane 2] C6-crap-subcommand ACCEPTED by Architect. Self-application exit=0, top CRAP=20.00, every function CC<=4 and CRAP<30. Exit-code matrix (0/1/2) verified end-to-end. Rule 3 carry-forward (cli.Dispatch, handoff.Validate, start.createSession, start.writeAndLaunchAgents, tmux.SetPaneTitles all CC 5->4) accepted. The un-skipped TestCrap_SelfApplicationIsClean is the right call. Holding on pre-commit/CI wiring until the Simplicity Enforcer agent task. Stand by for user confirmation and next task.
 ========

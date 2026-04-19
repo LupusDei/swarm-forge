@@ -1,127 +1,173 @@
 {
   "from": "e2e-interpreter",
   "to": "coder",
-  "status": "complete",
-  "id": "C5-two-step-send",
-  "summary": "C5 red phase complete. 11 failing Go tests force the two-call tmux.SendKeys delivery pattern (text with -l flag, pause via injectable Sleeper, then standalone Enter). The previous C4 single-call Enter-invariant tests have been rewritten to inspect the LAST of TWO calls — the spirit is preserved: Enter is still the final thing delivered to the pane. The notify-agent.sh shell script and its test are explicitly out of scope and untouched.",
-  "tests_currently_red": [
-    "internal/tmux/tmux_test.go :: TestSendKeysFinalArgIsLiteralEnter (updated from C4)",
-    "internal/tmux/tmux_test.go :: TestSendKeysSplitsTextAndEnter",
-    "internal/tmux/tmux_test.go :: TestSendKeysPausesBetweenCalls",
-    "internal/tmux/tmux_test.go :: TestSendKeysDefaultPauseIs200ms",
-    "internal/tmux/tmux_test.go :: TestSendKeysConfigurablePause",
-    "internal/tmux/tmux_test.go :: TestSendKeysLiteralFlagAvoidsKeyNameInterpretation",
-    "internal/tmux/tmux_test.go :: TestSendKeysSleeperIsInjectable",
-    "internal/notify/notify_test.go :: TestNotifyFinalArgIsLiteralEnter (updated from C4)",
-    "internal/start/start_test.go :: TestRunInitsMetricsPaneAsTwoSendKeysCalls",
-    "internal/acceptance/swarmforge_cli_test.go :: TestCLI_NotifyAlwaysSubmitsWithEnter (updated from C4)",
-    "internal/acceptance/swarmforge_cli_test.go :: TestCLI_SendKeysTerminatesWithEnter (updated from C4)"
-  ],
-  "existing_tests_still_green": [
-    "internal/setup/setup_test.go :: TestNotifyAgentScriptSendKeysLineEndsWithEnter — EXPLICITLY out of scope; do not touch the shell script",
-    "internal/acceptance/swarmforge_cli_test.go :: TestCLI_NotifyAgentScriptSubmitsWithEnter — same",
-    "All C1/C2/C3 regression tests — still green",
-    "TestSendKeys, TestLaunchAgent, TestCLI_MetricsPaneTailsLog, TestCLI_NotifyLogsAndSendsMessage — lenient enough to remain green through the two-call transition"
-  ],
-  "scaffolding_already_added_to_production": {
-    "file": "internal/tmux/tmux.go",
-    "additions": [
-      "type Sleeper interface { Sleep(d time.Duration) } — injection point, tests pass recording or no-op sleepers",
-      "type SendKeysOption func(*sendKeysConfig) — variadic option for SendKeys",
-      "type sendKeysConfig struct { sleeper Sleeper; pause time.Duration } — unexported applied config",
-      "func WithSleeper(s Sleeper) SendKeysOption — injects a sleeper",
-      "func WithPause(d time.Duration) SendKeysOption — sets the inter-call pause",
-      "SendKeys signature changed to: func SendKeys(cmd Commander, session, window string, pane int, keys string, opts ...SendKeysOption) error — variadic keeps old callers valid"
-    ],
-    "note": "These are TYPE DEFINITIONS and a SIGNATURE EXTENSION only — no behavior change. The old one-call body is still there. Your job is to replace the body with the two-call pattern and thread opts through downstream callers."
+  "status": "pending",
+  "id": "C6-crap-subcommand",
+  "summary": "Red tests for the new `swarmforge crap` subcommand are in place. The tool computes cyclomatic complexity (CC) and CRAP = CC^2*(1-cov)^3 + CC over a Go source tree, intersecting a caller-supplied coverprofile. Your job is to drive these tests Red -> Green -> Refactor. Stdlib only; no new go.mod dependencies. The Architect's upstream handoff (agent_context/handoff-to-e2e.json) remains the authoritative spec — read it alongside this one.",
+  "gherkin_source_of_truth": "features/swarmforge-crap.feature",
+  "upstream_handoff": "agent_context/handoff-to-e2e.json",
+  "package_layout": {
+    "new_package": "github.com/swarm-forge/swarm-forge/internal/crap",
+    "files_to_create": {
+      "internal/crap/doc.go": "Already exists as a stub — replace or augment with real code.",
+      "internal/crap/cc.go": "AST walker that computes ComplexityOfFunc per the CC rules (see below).",
+      "internal/crap/cover.go": "Coverprofile parsing and per-range coverage fraction helpers.",
+      "internal/crap/analyzer.go": "Analyze entry point: walks --root, parses files, computes CC + coverage + CRAP, emits []Row.",
+      "internal/crap/report.go": "RenderText and RenderJSON.",
+      "internal/crap/cli.go": "ParseArgs for flag parsing and Run for top-level execution (or fold into analyzer.go)."
+    },
+    "files_to_update": {
+      "internal/cli/cli.go": "Add a `Crap Handler` field to Config, plus a new case \"crap\": in Dispatch.",
+      "cmd/swarmforge/main.go": "Wire a crap handler into cli.Config — parse args via crap.ParseArgs, pass the resulting Config to crap.Run, and os.Exit with the returned code.",
+      "internal/crap/doc.go": "Stub placed by the E2E-Interpreter; convert into the real doc comment for the package (keep the package declaration)."
+    },
+    "files_out_of_scope": [
+      "features/swarmforge-crap.feature — do NOT edit. Raise ambiguities via the Architect.",
+      "go.mod — stdlib only. No new deps."
+    ]
   },
-  "implementation_punchlist": [
-    {
-      "step": 1,
-      "file": "internal/tmux/tmux.go",
-      "change": "Replace the body of tmux.SendKeys with the two-call pattern. Pseudocode:",
-      "pseudocode": [
-        "cfg := sendKeysConfig{sleeper: realSleeper{}, pause: 200 * time.Millisecond}",
-        "for _, opt := range opts { opt(&cfg) }",
-        "if cfg.sleeper == nil { cfg.sleeper = realSleeper{} }",
-        "if cfg.pause == 0 { cfg.pause = 200 * time.Millisecond } // NOTE: TestSendKeysConfigurablePause asserts pause==0 records 0 sleep — see below",
-        "target := fmt.Sprintf(\"%s:%s.%d\", session, window, pane)",
-        "if err := cmd.Run(\"send-keys\", \"-t\", target, \"-l\", keys); err != nil { return err }",
-        "cfg.sleeper.Sleep(cfg.pause)",
-        "return cmd.Run(\"send-keys\", \"-t\", target, \"Enter\")"
-      ],
-      "pause_zero_note": "TestSendKeysConfigurablePause iterates over pauses [0, 50ms, 750ms] and asserts the sleeper receives exactly that duration. So if pause==0 is EXPLICITLY passed via WithPause(0), the sleeper MUST still be called once with 0. Distinguish 'not configured' (nil option) from 'configured to 0'. Simplest approach: make pause a *time.Duration in sendKeysConfig, or track a 'configured' bool, or init cfg.pause = -1 and treat -1 as unconfigured. Your choice."
+  "expected_api": {
+    "types": {
+      "Row": "struct { File string; Line int; Function string; CC int; Coverage float64; CRAP float64; Band string; Violations []string }",
+      "Thresholds": "struct { CC int; CRAP float64 }",
+      "Config": "struct { Root string; Coverprofile string; JSON bool; Thresholds Thresholds; Stdout, Stderr io.Writer }",
+      "Block": "struct { File string; StartLine, EndLine, NumStmts, Count int }"
     },
-    {
-      "step": 2,
-      "file": "internal/tmux/tmux.go",
-      "change": "Add a realSleeper type (unexported) that wraps time.Sleep:",
-      "pseudocode": [
-        "type realSleeper struct{}",
-        "func (realSleeper) Sleep(d time.Duration) { time.Sleep(d) }"
-      ]
-    },
-    {
-      "step": 3,
-      "file": "internal/notify/notify.go",
-      "change": "Extend Notify to accept variadic tmux.SendKeysOption so tests can inject a sleeper. New signature:",
-      "pseudocode": [
-        "func Notify(cmd tmux.Commander, logger *swarmlog.Logger, session string, pane int, message string, opts ...tmux.SendKeysOption) error {",
-        "    role := fmt.Sprintf(\"pane %d\", pane)",
-        "    if err := logger.Write(role, message); err != nil { return err }",
-        "    return tmux.SendKeys(cmd, session, \"swarm\", pane, message, opts...)",
-        "}"
-      ],
-      "why": "Without this, TestNotifyFinalArgIsLiteralEnter burns 200ms of real wall-clock sleep per run. The handoff explicitly forbids real sleep in test paths. Note: the test currently does NOT pass opts — it accepts the 200ms cost for now. If you'd rather the test runs fast, also thread opts through from the acceptance test call site and switch the test to pass tmux.WithSleeper(noop). Either way, the production signature must accept opts."
-    },
-    {
-      "step": 4,
-      "file": "internal/start/start.go + internal/start/start_test.go",
-      "change": "Thread a Sleeper through start.Config so metrics-pane SendKeys can use a no-op in tests. Suggested approach — add fields to start.Config:",
-      "pseudocode": [
-        "type Config struct {",
-        "    ... existing fields ...",
-        "    Sleeper tmux.Sleeper   // nil => real time.Sleep in metrics init",
-        "    Pause   time.Duration  // 0 => 200ms default",
-        "}"
-      ],
-      "then": "In initMetricsPane, build []tmux.SendKeysOption from cfg.Sleeper / cfg.Pause (skip WithSleeper if cfg.Sleeper == nil, skip WithPause if cfg.Pause == 0) and pass to tmux.SendKeys. In start_test.go's fullCfg helper, set Config.Sleeper to a no-op so TestRunInitsMetricsPaneAsTwoSendKeysCalls (and other start tests) do not sleep."
-    },
-    {
-      "step": 5,
-      "file": "cmd/swarmforge/main.go",
-      "change": "Leave Sleeper / Pause at their zero values so production uses the real time.Sleep + 200ms default. No explicit wiring needed beyond accepting the new Config shape."
-    },
-    {
-      "step": 6,
-      "file": "internal/acceptance/swarmforge_cli_test.go",
-      "change": "TestCLI_NotifyAlwaysSubmitsWithEnter: I did NOT thread opts through this test yet because notify.Notify's current signature does not accept them. Once you extend notify.Notify (step 3), please add `tmux.WithSleeper(noopAcceptanceSleeper{})` to the Notify call in this acceptance test so it does not sleep 200ms. The helper `noopAcceptanceSleeper` is already defined at the bottom of that file."
+    "functions": {
+      "Analyze(cfg Config) ([]Row, error)": "Walks cfg.Root, parses Go files (excluding _test.go, vendor/, hidden dirs, non-.go), intersects with ParseCoverprofile(cfg.Coverprofile). Returns rows sorted by CRAP desc then CC desc with Violations pre-computed against cfg.Thresholds.",
+      "Run(cfg Config) int": "Orchestrates Analyze + RenderText/RenderJSON. Returns 0 clean, 1 on any CC or CRAP violation, 2 on missing/unreadable coverprofile or I/O error. Writes diagnostics to cfg.Stderr.",
+      "ParseArgs(args []string, stderr io.Writer) (Config, error)": "Parses `--coverprofile`, `--root`, `--json`, `--threshold-cc`, `--threshold-crap`. Defaults: Root=\".\", Thresholds={CC:4, CRAP:30}. Error (and usage hint on stderr) when --coverprofile missing or an unknown flag is seen.",
+      "ComplexityOfFunc(fn *ast.FuncDecl) int": "Implements the CC rules below. Includes closures folded into the enclosing top-level function.",
+      "ParseCoverprofile(r io.Reader) ([]Block, error)": "Tolerates an optional `mode: <kind>` first line; rejects malformed block lines.",
+      "CoverageForRange(blocks []Block, file string, startLine, endLine int) float64": "Sum(NumStmts where Count>0) / Sum(NumStmts) across blocks that match file and overlap [startLine, endLine]. Zero when there are no matching blocks.",
+      "CrapScore(cc int, cov float64) float64": "CC*CC*(1-cov)^3 + CC. Pure function.",
+      "Band(crap float64) string": "`low` if crap<5, `moderate` if crap<30, `high` otherwise.",
+      "RenderText(rows []Row, th Thresholds, w io.Writer) error": "Table output. Sorts rows internally (CRAP desc, CC desc). Columns: file:line, function, cc, coverage %, crap, band, violations. Coverage as `40.0%` (one decimal). CRAP as `12.48` (two decimals). Violations as space/comma-separated subset of {cc, crap}; empty for rows that meet both thresholds.",
+      "RenderJSON(rows []Row, w io.Writer) error": "Emits a JSON array of objects. Field names: file, line, function, cc, coverage (float in [0,1]), crap, band, violations ([]string). Sort order matches text."
     }
+  },
+  "cc_rules": {
+    "base": 1,
+    "increments": [
+      "+1 per `if` (including `else if`; bare `else` does NOT count)",
+      "+1 per `for` loop",
+      "+1 per `for ... range` loop",
+      "+1 per `case` clause in a `switch` (not the switch itself)",
+      "+1 per `case` clause in a `select`",
+      "+1 per `&&`",
+      "+1 per `||`"
+    ],
+    "closures": "Any anonymous func literal inside a top-level func body contributes its complexity to the enclosing top-level func. Only one Row per top-level func.",
+    "scope": "Top-level funcs AND methods (with a receiver) both get a Row. init() also counts as top-level."
+  },
+  "coverprofile_rules": {
+    "format": "Standard Go coverprofile. Optional `mode: set|count|atomic` first line — tolerated, not a Block.",
+    "block_line": "<file>:<startLine>.<startCol>,<endLine>.<endCol> <numStmts> <count>",
+    "intersection": "A Block belongs to a function iff block.File matches the function's file AND block.StartLine <= fn.EndLine AND block.EndLine >= fn.StartLine.",
+    "fraction": "cov = sum(numStmts where count>0) / sum(numStmts) over matching blocks. Zero when no matching blocks.",
+    "path_resolution": "The Architect noted that coverprofiles carry package-qualified paths (e.g. github.com/...). For the E2E tests I wrote, the coverprofile path matches the on-disk file path verbatim via t.TempDir(), so you can start with literal string equality and layer on package-qualified resolution later if the self-application smoke test demands it."
+  },
+  "cli_surface": {
+    "invocation": "swarmforge crap --coverprofile=<path> [--root=<dir>] [--json] [--threshold-cc=<int>] [--threshold-crap=<float>]",
+    "defaults": {"--root": ".", "--threshold-cc": 4, "--threshold-crap": 30},
+    "exit_codes": {
+      "0": "every row satisfies CC <= threshold-cc AND CRAP < threshold-crap",
+      "1": "at least one row violates either threshold (CRAP >= threshold-crap counts as a violation — the `>=` is intentional)",
+      "2": "usage error (missing --coverprofile, unknown flag) OR I/O error (missing/unreadable coverprofile, any filesystem error during walk)"
+    }
+  },
+  "tests_currently_red": {
+    "internal/cli/cli_test.go": [
+      "TestDispatchCrap — compile-fails on missing cli.Config.Crap field. Fix by adding `Crap Handler` to cli.Config and a `case \"crap\"` branch in Dispatch."
+    ],
+    "internal/crap/cc_test.go": [
+      "TestComplexityOfFunc (table-driven, 6 subtests for each CC rule)",
+      "TestComplexityOfFunc_FoldsClosures (closure folding → one row, CC=4)"
+    ],
+    "internal/crap/cover_test.go": [
+      "TestCoverageForRange_FractionFromOverlappingBlocks",
+      "TestCoverageForRange_NoMatchesIsZero",
+      "TestParseCoverprofile_ToleratesModeLine",
+      "TestCoverageForRange_PerFunctionSelectivity"
+    ],
+    "internal/crap/analyzer_test.go": [
+      "TestAnalyze_FileFilters — walks a t.TempDir fixture with foo.go, foo_test.go, vendor/x/y.go, .git/a.go, .claude/b.go, README.md, pkg/c.go, main.go. Only foo.go, pkg/c.go, main.go may produce rows.",
+      "TestCrapScore — 8 (cc, cov) -> (crap, band) rows from the Gherkin Scenario Outline."
+    ],
+    "internal/crap/report_test.go": [
+      "TestRenderText_SortOrder — feeds rows out of order (A, C, D, B); expects rendered order B, C, D, A. Also a CRAP tie broken by CC desc.",
+      "TestRenderText_ColumnsPresent — expects literals `x.go:3`, `F`, `5`, `40.0%`, `12.48`, `moderate` in the output.",
+      "TestRenderText_ViolationsColumn — three sub-cases: cc-only, both, neither. (Row.Violations is expected to already be populated; renderer prints it verbatim.)",
+      "TestRenderJSON_ShapeAndFields — valid JSON array; each element has the full key set and correct types.",
+      "TestRenderJSON_SortOrder — unsorted input; expects sorted JSON output by crap desc."
+    ],
+    "internal/acceptance/swarmforge_crap_test.go": [
+      "TestCrap_ExitCode2OnUsageAndIOErrors — missing --coverprofile, unknown flag, nonexistent file each produce the expected error / exit 2 + stderr mention.",
+      "TestCrap_RootFlagDefaultAndOverride — default `.`, override `./internal/crap`.",
+      "TestCrap_ThresholdFlags — defaults {CC:4, CRAP:30}; --threshold-cc=8 --threshold-crap=50.",
+      "TestCrap_ExitCodePolicy — clean → 0; CC=5 fixture with default CC threshold → 1; CC=5 cov=0 (CRAP=30) with CC threshold raised to 10 → 1 (proves `>=` is a violation).",
+      "TestCrap_SelfApplicationIsClean — currently t.Skip-ed. Un-skip as your final step once the repo is clean under the default thresholds. Helper `findRepoRoot` + commented body are already there for you."
+    ]
+  },
+  "tests_currently_green_keep_that_way": [
+    "Everything outside internal/cli, internal/acceptance, and internal/crap. I verified with `go test $(go list ./... | grep -v -E 'internal/(crap|acceptance|cli)')` — all green."
   ],
-  "new_invariant": "Across the whole system, after every handoff: the LAST tmux call to the target pane is `send-keys -t <target> Enter` — with Enter as its only non-target argument. The preceding call is `send-keys -t <target> -l <payload>` with the literal-text flag so payloads containing 'Enter' are typed as five characters, not interpreted as the Enter key. A Sleeper runs exactly once between the two calls.",
-  "forbidden": [
-    "Do NOT touch internal/setup/setup.go notify-agent.sh template or its tests — out of scope for C5.",
-    "Do NOT remove the existing 'notify-agent.sh helper script submits with Enter' Gherkin scenario or its supporting test.",
-    "Do NOT introduce real time.Sleep into any test path. Every test must either inject a no-op/recording sleeper or go through a code path that does.",
-    "Do NOT clear the input before sending (no 'C-u' or similar). Do NOT use tmux paste buffers. Do NOT collapse back to a single send-keys call."
+  "scenario_to_test_map": [
+    {"gherkin": "crap subcommand is dispatched by the CLI", "test": "internal/cli/cli_test.go::TestDispatchCrap"},
+    {"gherkin": "--coverprofile is required", "test": "internal/acceptance/swarmforge_crap_test.go::TestCrap_ExitCode2OnUsageAndIOErrors"},
+    {"gherkin": "I/O errors exit with code 2", "test": "same"},
+    {"gherkin": "usage errors exit with code 2", "test": "same"},
+    {"gherkin": "--root defaults / --root explicit", "test": "TestCrap_RootFlagDefaultAndOverride"},
+    {"gherkin": "default thresholds 4/30 / threshold flags override", "test": "TestCrap_ThresholdFlags"},
+    {"gherkin": "clean → 0 / any violation → 1 (CC or CRAP)", "test": "TestCrap_ExitCodePolicy"},
+    {"gherkin": "CC rule: no branches", "test": "internal/crap/cc_test.go::TestComplexityOfFunc/baseline_no_branches"},
+    {"gherkin": "CC rule: two ifs", "test": "TestComplexityOfFunc/two_if_statements"},
+    {"gherkin": "CC rule: for + range", "test": "TestComplexityOfFunc/for_and_range"},
+    {"gherkin": "CC rule: switch with 3 cases", "test": "TestComplexityOfFunc/switch_three_cases"},
+    {"gherkin": "CC rule: select with 2 cases", "test": "TestComplexityOfFunc/select_two_cases"},
+    {"gherkin": "CC rule: && and ||", "test": "TestComplexityOfFunc/mixed_and_or_in_if"},
+    {"gherkin": "closure complexity folds", "test": "TestComplexityOfFunc_FoldsClosures"},
+    {"gherkin": "file filters: _test.go, vendor/, hidden dirs, non-.go", "test": "internal/crap/analyzer_test.go::TestAnalyze_FileFilters"},
+    {"gherkin": "coverage fraction from overlapping blocks", "test": "internal/crap/cover_test.go::TestCoverageForRange_FractionFromOverlappingBlocks"},
+    {"gherkin": "no matching blocks ⇒ 0", "test": "TestCoverageForRange_NoMatchesIsZero"},
+    {"gherkin": "mode line tolerated", "test": "TestParseCoverprofile_ToleratesModeLine"},
+    {"gherkin": "blocks matched by file + range", "test": "TestCoverageForRange_PerFunctionSelectivity"},
+    {"gherkin": "CRAP formula scenario outline", "test": "internal/crap/analyzer_test.go::TestCrapScore"},
+    {"gherkin": "text sort CRAP desc then CC desc", "test": "internal/crap/report_test.go::TestRenderText_SortOrder"},
+    {"gherkin": "text columns present", "test": "TestRenderText_ColumnsPresent"},
+    {"gherkin": "violations column", "test": "TestRenderText_ViolationsColumn"},
+    {"gherkin": "--json shape + fields + types", "test": "TestRenderJSON_ShapeAndFields"},
+    {"gherkin": "JSON sort order", "test": "TestRenderJSON_SortOrder"},
+    {"gherkin": "self-application clean", "test": "TestCrap_SelfApplicationIsClean (currently t.Skip — un-skip as final step)"}
+  ],
+  "implementation_hints": [
+    "Use go/parser + go/token + go/ast to parse Go sources. Walk each source with ast.Inspect or a custom walker; count per-node contributions. For the closure-folding test, track the enclosing top-level FuncDecl while visiting ast.FuncLit nodes and roll the count up.",
+    "For the walker, filepath.WalkDir is natural. Skip a directory entry when its basename starts with '.' or equals 'vendor'; skip a file entry when it ends with '_test.go' or doesn't end with '.go'.",
+    "ParseArgs: I suggest using a `flag.NewFlagSet(\"crap\", flag.ContinueOnError)` with SetOutput(stderr) — ContinueOnError returns errors instead of os.Exit-ing, which is what the tests want. Use --threshold-crap as a float (Float64Var).",
+    "Run: after ParseArgs (or accepting a pre-parsed Config), os.Open the coverprofile. If that fails, write \"<path>: <err>\" to Stderr and return 2. On any other filesystem error during Analyze, same treatment.",
+    "Keep every function under CC 4 (Constitution Rule 3) and under 30 lines (Rule 5). The AST walker is a natural source of complexity — consider extracting `countFromStmt(stmt ast.Stmt) int` and `countFromExpr(expr ast.Expr) int` helpers or a visitor struct.",
+    "Violations list generation: `violations := []string{}` then `if row.CC > th.CC { append \"cc\" }` / `if row.CRAP >= th.CRAP { append \"crap\" }`. Keep it as a sorted []string so JSON output is deterministic."
+  ],
+  "constitution_reminders": [
+    "Rule 1 (TDD): The red tests define the contract. Write minimum code to turn each green; no gold-plating.",
+    "Rule 3 (Simplicity): every method ≤ 4 cyclomatic complexity, ≤ 30 lines. Your own `crap` subcommand will check this — self-application MUST be clean when you un-skip TestCrap_SelfApplicationIsClean.",
+    "Rule 4 (Mutation testing): once green, Mutation Hunter will try to flip `>` ↔ `>=`, `&&` ↔ `||`, boundary ±1 in CC and threshold comparisons. Kill every mutant. Two obvious kill-candidates:",
+    "  • Coverage fraction: an off-by-one in the overlap predicate (`<` vs `<=`) flips the per-function selectivity test. Good.",
+    "  • Exit-code threshold comparison: `CRAP > th.CRAP` would pass TestCrap_ExitCodePolicy's equality case ONLY if you swap it to `>=`. That test deliberately targets the boundary.",
+    "Rule 5 (Linter): `gofmt`, `go vet` clean. No dead variables; no unused imports."
   ],
   "how_to_verify": [
-    "`go test ./...` — the 11 listed red tests must turn green; no previously-green test may regress.",
+    "`go test ./internal/crap/... ./internal/acceptance/... ./internal/cli/...` — every listed red test goes green; no new failures elsewhere.",
+    "`go test ./...` — whole repo green.",
     "`go vet ./...` — clean.",
-    "`go build ./cmd/swarmforge/` — succeeds.",
-    "Spot-check timing: `go test -run TestSendKeysSleeperIsInjectable -v ./internal/tmux/` completes in well under 1 second (the test itself asserts this)."
+    "`go build ./cmd/swarmforge/` — succeeds. Smoke test by hand: `./swarmforge crap --coverprofile=<something>` dispatches to the new handler.",
+    "Rule 3 self-check: once implementation is in, run your own tool against the repo and fix any rows it surfaces before un-skipping TestCrap_SelfApplicationIsClean."
   ],
-  "rule_3_refactor_carry_forward": {
-    "why": "start.Run had cyclomatic complexity ~7 after C3 (exceeds Constitution's limit of ≤ 4). C5 adds more plumbing for Sleeper/Pause — if you inline it into Run you will make the violation worse.",
-    "what_to_do": "As part of making C5 green (or immediately after, as a named Refactor step while keeping tests green), split start.Run into a pipeline. Suggested shapes: a []func(Config) error slice executed in order with early-exit on error, or extracted named helpers (runPreflight, runSetup, readConstitution, printBanner, createOrReplaceSession, writeAndLaunchAgents, initMetricsPane, attachToSession). Each helper stays under the complexity cap and Run becomes a short orchestrator.",
-    "do_not_drop_this": "If you only do C5 and skip the refactor, the Simplicity Enforcer will reject the change. Carry this forward."
-  },
-  "constitution_reminders": [
-    "Rule 1 (TDD): 11 red tests define the contract. Write the minimum production code to turn each green.",
-    "Rule 3 (Simplicity): every method stays ≤ 4 cyclomatic complexity and ≤ 30 lines. tmux.SendKeys, notify.Notify, start.Run are the hot spots. Apply the start.Run refactor above.",
-    "Rule 4 (Mutation testing): once tests are green, the Mutation Hunter will try to flip operators in the new two-call logic. If a mutant survives (e.g. removing the Sleep call or swapping call order), add a test that kills it.",
-    "Rule 5 (Linter): gofmt/go vet clean on every file you touch."
+  "known_design_questions_you_may_revisit": [
+    "RenderText sort vs. Analyze sort: I assumed both sort (tests feed unsorted rows to the renderer). If you prefer a single sort in Analyze and a preserves-order RenderText, change the test to feed pre-sorted rows — but keep the sort CONTRACT somewhere testable.",
+    "RenderText thresholds parameter: currently unused if Violations are pre-populated on Row. If you want to recompute violations inside RenderText, the tests construct rows with Violations already set AND pass matching thresholds, so either design passes.",
+    "Row.Violations element order: tests check membership (Contains). Pick either alphabetical or insertion order; keep it deterministic for JSON stability."
   ],
-  "when_you_are_done": "Write agent_context/handoff-to-architect.json summarizing what changed (files touched, design choices for Sleeper default and pause-zero semantics, confirmation of the Rule 3 start.Run refactor), then notify pane 0.",
-  "timestamp": "2026-04-19T02:00:00Z"
+  "when_you_are_done": "Write agent_context/handoff-to-architect.json summarizing: files touched, design choices (sort placement, path resolution, violations ordering), self-application test un-skip status, any surviving edge cases. Then notify pane 0 via `./swarmforge notify 0`.",
+  "timestamp": "2026-04-19T03:00:00Z"
 }

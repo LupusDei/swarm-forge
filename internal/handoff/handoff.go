@@ -9,29 +9,31 @@ import (
 
 // Handoff represents a task handoff between agents.
 type Handoff struct {
-	From         string   `json:"from"`
-	To           string   `json:"to"`
-	Status       string   `json:"status"`
-	Feature      string   `json:"feature"`
-	Summary      string   `json:"summary"`
-	Artifacts    []string `json:"artifacts"`
-	Instructions string   `json:"instructions"`
+	From         string    `json:"from"`
+	To           string    `json:"to"`
+	Status       string    `json:"status"`
+	Feature      string    `json:"feature"`
+	Summary      string    `json:"summary"`
+	Artifacts    []string  `json:"artifacts"`
+	Instructions string    `json:"instructions"`
 	Timestamp    time.Time `json:"timestamp"`
 }
 
 // Validate returns an error if any required field is empty.
 func (h Handoff) Validate() error {
-	if h.From == "" {
-		return fmt.Errorf("handoff missing required field: From")
+	required := []struct {
+		name  string
+		value string
+	}{
+		{"From", h.From},
+		{"To", h.To},
+		{"Status", h.Status},
+		{"Feature", h.Feature},
 	}
-	if h.To == "" {
-		return fmt.Errorf("handoff missing required field: To")
-	}
-	if h.Status == "" {
-		return fmt.Errorf("handoff missing required field: Status")
-	}
-	if h.Feature == "" {
-		return fmt.Errorf("handoff missing required field: Feature")
+	for _, r := range required {
+		if r.value == "" {
+			return fmt.Errorf("handoff missing required field: %s", r.name)
+		}
 	}
 	return nil
 }

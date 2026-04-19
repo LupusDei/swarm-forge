@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/swarm-forge/swarm-forge/internal/cli"
+	"github.com/swarm-forge/swarm-forge/internal/crap"
 	"github.com/swarm-forge/swarm-forge/internal/notify"
 	"github.com/swarm-forge/swarm-forge/internal/setup"
 	"github.com/swarm-forge/swarm-forge/internal/start"
@@ -29,6 +30,7 @@ func main() {
 		Start:  startHandler(commander, projectRoot),
 		Notify: notifyHandler(commander, logger),
 		Log:    logHandler(logger),
+		Crap:   crapHandler(),
 	}
 
 	if err := cli.Dispatch(os.Args[1:], cfg); err != nil {
@@ -71,6 +73,19 @@ func logHandler(logger *swarmlog.Logger) cli.Handler {
 			return fmt.Errorf("usage: swarmforge log <role> <message>")
 		}
 		return logger.Write(args[0], args[1])
+	}
+}
+
+func crapHandler() cli.Handler {
+	return func(args []string) error {
+		cfg, err := crap.ParseArgs(args, os.Stderr)
+		if err != nil {
+			os.Exit(2)
+		}
+		cfg.Stdout = os.Stdout
+		cfg.Stderr = os.Stderr
+		os.Exit(crap.Run(cfg))
+		return nil
 	}
 }
 

@@ -74,6 +74,13 @@ func SplitGrid(cmd Commander, session, window string) error {
 // SetPaneTitles sets the title for each pane and enables border display.
 func SetPaneTitles(cmd Commander, session, window string) error {
 	target := session + ":" + window
+	if err := assignPaneTitles(cmd, target); err != nil {
+		return err
+	}
+	return setBorderOptions(cmd, session, target)
+}
+
+func assignPaneTitles(cmd Commander, target string) error {
 	titles := []string{"Architect", "E2E Interpreter", "Coder", "Metrics"}
 	for i, title := range titles {
 		pane := fmt.Sprintf("%s.%d", target, i)
@@ -81,10 +88,15 @@ func SetPaneTitles(cmd Commander, session, window string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func setBorderOptions(cmd Commander, session, target string) error {
 	if err := cmd.Run("set-option", "-t", session, "pane-border-status", "top"); err != nil {
 		return err
 	}
-	if err := cmd.Run("set-option", "-t", session, "pane-border-format", " #{pane_title} "); err != nil {
+	if err := cmd.Run("set-option", "-t", session,
+		"pane-border-format", " #{pane_title} "); err != nil {
 		return err
 	}
 	return cmd.Run("set-window-option", "-t", target, "allow-rename", "off")

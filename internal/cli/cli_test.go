@@ -54,6 +54,31 @@ func TestDispatchLog(t *testing.T) {
 	}
 }
 
+func TestDispatchCrap(t *testing.T) {
+	var gotArgs []string
+	called := false
+	cfg := cli.Config{
+		Start:  func(_ []string) error { return nil },
+		Notify: func(_ []string) error { return nil },
+		Log:    func(_ []string) error { return nil },
+		Crap: func(args []string) error {
+			called = true
+			gotArgs = args
+			return nil
+		},
+	}
+	err := cli.Dispatch([]string{"crap", "--coverprofile=cover.out"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("crap handler not called")
+	}
+	if len(gotArgs) != 1 || gotArgs[0] != "--coverprofile=cover.out" {
+		t.Fatalf("crap handler received unexpected args: %v", gotArgs)
+	}
+}
+
 func TestDispatchEmptyArgs(t *testing.T) {
 	cfg := cli.Config{
 		Start:  func(_ []string) error { return nil },
